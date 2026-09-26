@@ -1,6 +1,7 @@
-import type { App, Ref, Component } from 'vue'
-import type { Router } from './router'
+import type { App, Component, Ref } from 'vue'
+
 import type { Awaitable, SiteData } from '../shared'
+import type { Router } from './router'
 
 export interface EnhanceAppContext {
   app: App
@@ -14,7 +15,8 @@ export interface Theme {
   extends?: Theme
 
   /**
-   * @deprecated can be replaced by wrapping layout component
+   * Runs inside the root component's `setup()` (during SSR too). With
+   * `extends`, setups run base-first, like `enhanceApp`.
    */
   setup?: () => void
 

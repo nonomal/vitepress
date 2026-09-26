@@ -1,14 +1,37 @@
-import type MarkdownIt from 'markdown-it'
-import type { Options as MiniSearchOptions } from 'minisearch'
-import type { ComputedRef, Ref, ShallowRef } from 'vue'
+import type { Options as _MiniSearchOptions } from 'minisearch'
+import type { ComputedRef, ShallowRef } from 'vue'
+
 import type { DocSearchProps } from './docsearch.js'
-import type {
-  LocalSearchTranslations,
-  PageSplitSection
-} from './local-search.js'
-import type { Awaitable, MarkdownEnv, PageData } from './shared.js'
+import type { LocalSearchTranslations } from './local-search.js'
+import type { Header, PageData, Route, VitePressData } from './shared.js'
 
 export namespace DefaultTheme {
+  /**
+   * The layout state returned by `useLayout` from `vitepress/theme`.
+   */
+  export interface Layout {
+    isHome: ComputedRef<boolean>
+
+    sidebar: Readonly<ShallowRef<SidebarItem[]>>
+    sidebarGroups: ComputedRef<SidebarItem[]>
+    hasSidebar: ComputedRef<boolean>
+    isSidebarEnabled: ComputedRef<boolean>
+
+    hasAside: ComputedRef<boolean>
+    leftAside: ComputedRef<boolean>
+
+    /**
+     * The outline headers of the current page.
+     */
+    headers: Readonly<ShallowRef<OutlineItem[]>>
+    /**
+     * Whether the current page has a local nav. Local nav is shown when the
+     * "outline" is present in the page. However, note that the actual
+     * local nav visibility depends on the screen width as well.
+     */
+    hasLocalNav: ComputedRef<boolean>
+  }
+
   export interface Config {
     /**
      * The logo file of the site.
@@ -36,13 +59,6 @@ export namespace DefaultTheme {
     outline?: Outline | Outline['level'] | false
 
     /**
-     * @deprecated Use `outline.label` instead.
-     *
-     * @default 'On this page'
-     */
-    outlineTitle?: string
-
-    /**
      * The nav items.
      */
     nav?: NavItem[]
@@ -66,15 +82,6 @@ export namespace DefaultTheme {
      * be disabled.
      */
     editLink?: EditLink
-
-    /**
-     * @deprecated Use `lastUpdated.text` instead.
-     *
-     * Set custom last updated text.
-     *
-     * @default 'Last updated'
-     */
-    lastUpdatedText?: string
 
     lastUpdated?: LastUpdatedOptions
 
@@ -126,14 +133,37 @@ export namespace DefaultTheme {
      */
     langMenuLabel?: string
 
+    /**
+     * Accessible label of the main navigation landmarks (navbar menu and
+     * the mobile menu).
+     *
+     * @default 'Main Navigation'
+     */
+    navMenuLabel?: string
+
+    /**
+     * Set custom `aria-label` for the mobile menu (hamburger) button.
+     *
+     * @default 'Menu'
+     */
+    mobileMenuLabel?: string
+
+    /**
+     * Set custom `aria-label` for the `⋯` overflow menu button in the
+     * navbar, which collects nav items and controls that don't fit.
+     *
+     * @default 'More options'
+     */
+    extraMenuLabel?: string
+
+    /**
+     * @default 'Skip to content'
+     */
+    skipToContentLabel?: string
+
     search?:
       | { provider: 'local'; options?: LocalSearchOptions }
       | { provider: 'algolia'; options: AlgoliaSearchOptions }
-
-    /**
-     * @deprecated Use `search` instead.
-     */
-    algolia?: AlgoliaSearchOptions
 
     /**
      * The carbon ads options. Leave it undefined to disable the ads feature.
@@ -141,11 +171,13 @@ export namespace DefaultTheme {
     carbonAds?: CarbonAdsOptions
 
     /**
-     * Changing locale when current url is `/foo` will redirect to `/locale/foo`.
+     * Changing locale when current url is `/foo` redirects to `/locale/foo`.
+     * Set to `false` to disable this behavior, or provide a function to
+     * customize the target locale link.
      *
      * @default true
      */
-    i18nRouting?: boolean
+    i18nRouting?: boolean | I18nRouting
 
     /**
      * Show external link icon in Markdown links.
@@ -155,18 +187,39 @@ export namespace DefaultTheme {
     externalLinkIcon?: boolean
 
     /**
+     * Color custom containers, GitHub-flavored alerts, and badges on a
+     * graded severity scale (danger red > warning orange > caution yellow)
+     * instead of matching GitHub's alert colors, where caution is red and
+     * warning is yellow.
+     *
+     * @default false
+     */
+    gradedContainers?: boolean
+
+    /**
      * Customize text of 404 page.
      */
     notFound?: NotFoundOptions
   }
 
+  export type I18nRouting = (
+    data: VitePressData<Config>,
+    route: Route,
+    targetLocale: string
+  ) => string
+
   // nav -----------------------------------------------------------------------
 
-  export type NavItem = NavItemWithLink | NavItemWithChildren
+  export type NavItem = NavItemComponent | NavItemWithLink | NavItemWithChildren
+
+  export interface NavItemComponent {
+    component: string
+    props?: Record<string, any>
+  }
 
   export interface NavItemWithLink {
     text: string
-    link: string
+    link: string | ((payload: PageData) => string)
     items?: never
 
     /**
@@ -186,7 +239,7 @@ export namespace DefaultTheme {
 
   export interface NavItemWithChildren {
     text?: string
-    items: (NavItemChildren | NavItemWithLink)[]
+    items: (NavItemComponent | NavItemChildren | NavItemWithLink)[]
 
     /**
      * `activeMatch` is expected to be a regex string. We can't use actual
@@ -267,22 +320,6 @@ export namespace DefaultTheme {
     target?: string
   }
 
-  /**
-   * ReturnType of `useSidebar`
-   */
-  export interface DocSidebar {
-    isOpen: Ref<boolean>
-    sidebar: ComputedRef<SidebarItem[]>
-    sidebarGroups: ComputedRef<SidebarItem[]>
-    hasSidebar: ComputedRef<boolean>
-    hasAside: ComputedRef<boolean>
-    leftAside: ComputedRef<boolean>
-    isSidebarEnabled: ComputedRef<boolean>
-    open: () => void
-    close: () => void
-    toggle: () => void
-  }
-
   // edit link -----------------------------------------------------------------
 
   export interface EditLink {
@@ -326,21 +363,10 @@ export namespace DefaultTheme {
     icon: SocialLinkIcon
     link: string
     ariaLabel?: string
+    target?: string
   }
 
-  export type SocialLinkIcon =
-    | 'discord'
-    | 'facebook'
-    | 'github'
-    | 'instagram'
-    | 'linkedin'
-    | 'mastodon'
-    | 'npm'
-    | 'slack'
-    | 'twitter'
-    | 'x'
-    | 'youtube'
-    | { svg: string }
+  export type SocialLinkIcon = string | { svg: string }
 
   // footer --------------------------------------------------------------------
 
@@ -363,25 +389,6 @@ export namespace DefaultTheme {
     actionText?: string
   }
 
-  // local nav -----------------------------------------------------------------
-
-  /**
-   * ReturnType of `useLocalNav`.
-   */
-  export interface DocLocalNav {
-    /**
-     * The outline headers of the current page.
-     */
-    headers: ShallowRef<any>
-
-    /**
-     * Whether the current page has a local nav. Local nav is shown when the
-     * "outline" is present in the page. However, note that the actual
-     * local nav visibility depends on the screen width as well.
-     */
-    hasLocalNav: ComputedRef<boolean>
-  }
-
   // outline -------------------------------------------------------------------
 
   export interface Outline {
@@ -389,15 +396,14 @@ export namespace DefaultTheme {
     label?: string
   }
 
+  export type OutlineItem = Omit<Header, 'slug' | 'children'> & {
+    element: HTMLHeadElement
+    children?: OutlineItem[]
+  }
+
   // local search --------------------------------------------------------------
 
   export interface LocalSearchOptions {
-    /**
-     * @default false
-     * @deprecated Use `detailedView: false` instead.
-     */
-    disableDetailedView?: boolean
-
     /**
      * If `true`, the detailed view will be enabled by default.
      * If `false`, the detailed view will be disabled.
@@ -415,46 +421,21 @@ export namespace DefaultTheme {
     translations?: LocalSearchTranslations
     locales?: Record<string, Partial<Omit<LocalSearchOptions, 'locales'>>>
 
-    miniSearch?: {
-      /**
-       * @see https://lucaong.github.io/minisearch/modules/_minisearch_.html#options
-       */
-      options?: Pick<
-        MiniSearchOptions,
-        'extractField' | 'tokenize' | 'processTerm'
-      >
-      /**
-       * @see https://lucaong.github.io/minisearch/modules/_minisearch_.html#searchoptions-1
-       */
-      searchOptions?: MiniSearchOptions['searchOptions']
+    miniSearch?: MiniSearchOptions
+  }
 
-      /**
-       * Overrides the default regex based page splitter.
-       * Supports async generator, making it possible to run in true parallel
-       * (when used along with `node:child_process` or `worker_threads`)
-       * ---
-       * This should be especially useful for scalability reasons.
-       * ---
-       * @param {string} path - absolute path to the markdown source file
-       * @param {string} html - document page rendered as html
-       */
-      _splitIntoSections?: (
-        path: string,
-        html: string
-      ) =>
-        | AsyncGenerator<PageSplitSection>
-        | Generator<PageSplitSection>
-        | Awaitable<PageSplitSection[]>
-    }
+  interface MiniSearchOptions {
     /**
-     * Allows transformation of content before indexing (node only)
-     * Return empty string to skip indexing
+     * @see https://lucaong.github.io/minisearch/types/MiniSearch.Options.html
      */
-    _render?: (
-      src: string,
-      env: MarkdownEnv,
-      md: MarkdownIt
-    ) => Awaitable<string>
+    options?: Pick<
+      _MiniSearchOptions,
+      'extractField' | 'tokenize' | 'processTerm'
+    >
+    /**
+     * @see https://lucaong.github.io/minisearch/types/MiniSearch.SearchOptions.html
+     */
+    searchOptions?: _MiniSearchOptions['searchOptions']
   }
 
   // algolia -------------------------------------------------------------------
@@ -464,6 +445,11 @@ export namespace DefaultTheme {
    * `@docsearch/react/dist/esm/DocSearch.d.ts`
    */
   export interface AlgoliaSearchOptions extends DocSearchProps {
+    /**
+     * Locale-specific overrides for Algolia search options.
+     * These options will be deeply merged with the root options,
+     * except for `searchParameters`, which is fully replaced.
+     */
     locales?: Record<string, Partial<DocSearchProps>>
   }
 
@@ -472,6 +458,7 @@ export namespace DefaultTheme {
   export interface CarbonAdsOptions {
     code: string
     placement: string
+    format?: 'classic' | 'responsive' | 'cover'
   }
 
   // last updated --------------------------------------------------------------
@@ -510,6 +497,13 @@ export namespace DefaultTheme {
      * @default "But if you don't change your direction, and if you keep looking, you may end up where you are heading."
      */
     quote?: string
+
+    /**
+     * Target of the home link.
+     *
+     * @default '/'
+     */
+    link?: string
 
     /**
      * Set aria label for home link.

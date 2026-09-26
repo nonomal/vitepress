@@ -56,6 +56,18 @@ This is a dangerous warning.
 This is a details block.
 :::
 
+::: note
+This is a note.
+:::
+
+::: important
+This is an important note.
+:::
+
+::: caution
+This is a caution note.
+:::
+
 ### Custom Title
 
 ::: danger STOP
@@ -196,6 +208,26 @@ export default config
 ## Markdown File Inclusion with Range without End
 
 <!--@include: ./foo.md{6,}-->
+
+## Markdown At File Region Snippet
+
+<!--@include: ./region-include.md#snippet-->
+
+## Markdown At File Range Region Snippet
+
+<!--@include: ./region-include.md#range-region{3,4}-->
+
+## Markdown At File Range Region Snippet without start
+
+<!--@include: ./region-include.md#range-region{,2}-->
+
+## Markdown At File Range Region Snippet without end
+
+<!--@include: ./region-include.md#range-region{5,}-->
+
+## Markdown File Inclusion with Header
+
+<!--@include: ./header-include.md#header-1-1-->
 
 ## Image Lazy Loading
 

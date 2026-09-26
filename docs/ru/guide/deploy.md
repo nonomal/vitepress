@@ -1,16 +1,17 @@
 ---
+description: Разверните свой сайт VitePress на популярных платформах, таких как Netlify, Vercel, GitHub Pages и других.
 outline: deep
 ---
 
 # Развёртывание вашего сайта VitePress {#deploy-your-vitepress-site}
 
-Следующие руководства основаны на некоторых общих предположениях:
+Следующие инструкции основаны на некоторых общих предположениях:
 
 - Сайт VitePress находится в директории `docs` вашего проекта.
 - Вы используете выходной каталог сборки по умолчанию (`.vitepress/dist`).
 - VitePress установлен как локальная зависимость в вашем проекте, и вы установили следующие скрипты в вашем `package.json`:
 
-  ```json
+  ```json [package.json]
   {
     "scripts": {
       "docs:build": "vitepress build docs",
@@ -19,7 +20,7 @@ outline: deep
   }
   ```
 
-## Создание и локальное тестирование {#build-and-test-locally}
+## Сборка и локальное тестирование {#build-and-test-locally}
 
 1. Выполните эту команду, чтобы собрать документацию:
 
@@ -33,9 +34,9 @@ outline: deep
    $ npm run docs:preview
    ```
 
-   Команда `preview` загрузит локальный статический веб-сервер, который будет обслуживать выходной каталог `.vitepress/dist` по адресу `http://localhost:4173`. Вы можете использовать это, чтобы убедиться, что всё выглядит хорошо, прежде чем отправлять в производство.
+   Команда `preview` загрузит локальный статический веб-сервер, который будет обслуживать выходной каталог `.vitepress/dist` по адресу `http://localhost:4173`. Вы можете использовать его для теста, чтобы убедиться, что всё выглядит хорошо, прежде чем отправлять в производство.
 
-3. Вы можете настроить порт сервера, передав `--port` в качестве аргумента.
+3. Можно указать порт сервера, передав `--port` в качестве аргумента.
 
    ```json
    {
@@ -53,13 +54,37 @@ outline: deep
 
 **Пример:** Если вы используете Github (или GitLab) Pages и развёртываете на `user.github.io/repo/`, то установите `base` на `/repo/`.
 
+## Переносимые сборки (относительный base) {#relocatable-builds-relative-base}
+
+Когда конечный URL сайта неизвестен на момент сборки — шлюз IPFS (`https://gateway/ipfs/<cid>/…`), Wayback Machine, общая папка, документация, встроенная в приложение — установите `base` равным `'./'`:
+
+```ts
+export default {
+  base: './'
+}
+```
+
+Каждая страница затем ссылается на ресурсы и другие страницы относительно своего собственного расположения, а клиентский рантайм восстанавливает реальную точку монтирования при загрузке страницы. Одна и та же сборка работает из **любого** подпути без пересборки — в том числе из нескольких одновременно — с полностью работающими маршрутизацией, поиском и предзагрузкой.
+
+Открытие сгенерированных HTML-файлов напрямую из файловой системы (`file://`) также работает как стилизованный, полностью навигируемый статический сайт. Браузеры блокируют JavaScript-модули при использовании `file://`, поэтому гидратации там нет — интерактивные функции вроде поиска остаются неактивными, при этом весь предварительно отрендеренный контент и ссылки продолжают работать.
+
+Несколько важных моментов:
+
+- Держите [`cleanUrls`](../reference/site-config#cleanurls) выключенным (значение по умолчанию): переносимому выводу нужны ссылки, оканчивающиеся на `.html`, поскольку нет сервера для переписывания «красивых» URL.
+- `404.html` генерируется для корневой глубины. Хосты, отдающие его как fallback для URL произвольной глубины, отрендерят его без стилей (для неизвестной глубины нет корректного относительного префикса).
+- Записи [`head`](../reference/site-config#head) выводятся как есть, как и всегда — избегайте в них корне-абсолютных путей вроде `/favicon.ico` и предпочитайте абсолютные URL или `transformHead`.
+- Сырые HTML-теги `<a>` в Markdown сохраняют `href` в том виде, как написаны — используйте синтаксис Markdown-ссылок для сайт-абсолютных ссылок (встроенные источники `<img>` проходят через пайплайн ресурсов и обрабатываются корректно).
+- Ссылки, созданные [`createContentLoader`](./data-loading#createcontentloader), остаются сайт-абсолютными (их HTML встраивается в другие страницы, поэтому единого корректного относительного префикса не существует) — они разрешаются только для корневого монтирования.
+- Отдавайте страницы по их каноническим URL: корень как `/dir/` (не `/dir`), и без добавленных завершающих слэшей у URL страниц. Относительный префикс разрешается относительно URL, который браузер реально показывает, а практически все статические хостинги уже канонизируют именно так.
+- Dev-сервер всегда отдаёт по `/`; относительное поведение применяется к продакшен-сборке.
+
 ## Заголовки кэша HTTP {#http-cache-headers}
 
-Если вы контролируете HTTP-заголовки на своем рабочем сервере, вы можете настроить заголовки `cache-control` для достижения лучшей производительности при повторных посещениях.
+Если вы контролируете HTTP-заголовки на своем рабочем сервере, можно настроить заголовки `cache-control` для достижения лучшей производительности при повторных посещениях.
 
-В производственной сборке используются хэшированные имена файлов для статических ресурсов (JavaScript, CSS и другие импортированные ресурсы, не находящиеся в `public`). Если вы просмотрите предварительную версию с помощью сетевой вкладки devtools вашего браузера, вы увидите файлы типа `app.4f283b18.js`.
+В производственной сборке используются хэшированные имена файлов для статических ресурсов (JavaScript, CSS и другие импортированные ресурсы, не находящиеся в `public`). Если вы просмотрите предварительную версию с помощью вкладки «Network» («Сеть») инструментов разработчика вашего браузера, вы увидите файлы типа `app.4f283b18.js`.
 
-Этот хэш `4f283b18` генерируется из содержимого этого файла. Один и тот же хэшированный URL гарантированно обслуживает одно и то же содержимое файла — если содержимое меняется, то и URL тоже. Это означает, что вы можете смело использовать самые сильные заголовки кэша для этих файлов. Все такие файлы будут помещены в каталог `assets/` в выходном каталоге, поэтому вы можете настроить для них следующий заголовок:
+Этот хэш `4f283b18` генерируется из содержимого этого файла. Один и тот же хэшированный URL гарантированно обслуживает одно и то же содержимое файла — если содержимое меняется, то и URL тоже. Это означает, что можно смело использовать самые сильные настройки кэширования для этих файлов. Все такие файлы будут помещены в каталог `assets/` в выходном каталоге, поэтому вы можете настроить для них следующий заголовок:
 
 ```
 Cache-Control: max-age=31536000,immutable
@@ -105,23 +130,23 @@ Cache-Control: max-age=31536000,immutable
 
 ## Руководства по платформам {#platform-guides}
 
-### Netlify / Vercel / Cloudflare Pages / AWS Amplify / Render {#netlify-vercel-cloudflare-pages-aws-amplify-render}
+### Netlify / Vercel / Cloudflare Pages / AWS Amplify / Render {#generic}
 
 Создайте новый проект и измените эти настройки с помощью панели управления:
 
 - **Build Command:** `npm run docs:build`
 - **Output Directory:** `docs/.vitepress/dist`
-- **Node Version:** `18` (или выше)
+- **Node Version:** `20` (или выше)
 
 ::: warning ПРЕДУПРЕЖДЕНИЕ
 Не включайте такие опции, как _Auto Minify_ для HTML-кода. Он удалит из вывода комментарии, которые имеют значение для Vue. При их удалении могут возникать ошибки несоответствия гидратации.
 :::
 
-### GitHub Pages {#github-pages}
+### GitHub Pages
 
 1. Создайте файл с именем `deploy.yml` в директории `.github/workflows` вашего проекта с примерно таким содержанием:
 
-   ```yaml
+   ```yaml [.github/workflows/deploy.yml]
    # Пример рабочего процесса для создания и развёртывания сайта VitePress на GitHub Pages
    #
    name: Deploy VitePress site to Pages
@@ -153,16 +178,25 @@ Cache-Control: max-age=31536000,immutable
        runs-on: ubuntu-latest
        steps:
          - name: Checkout
-           uses: actions/checkout@v4
+           uses: actions/checkout@v5
            with:
              fetch-depth: 0 # Не требуется, если функция lastUpdated не включена
-         # - uses: pnpm/action-setup@v3 # Раскомментируйте, если вы используете pnpm
+         # - uses: pnpm/action-setup@v4 # Раскомментируйте, если вы используете pnpm
+         #   with:
+         #     version: 9
          # - uses: oven-sh/setup-bun@v1 # Раскомментируйте, если вы используете Bun
          - name: Setup Node
-           uses: actions/setup-node@v4
+           uses: actions/setup-node@v6
            with:
-             node-version: 20
+             node-version: 24
              cache: npm # или pnpm / yarn
+         - name: Cache VitePress
+           uses: actions/cache@v4
+           with:
+             path: docs/.vitepress/cache
+             key: ${{ runner.os }}-vitepress-${{ hashFiles('docs/**', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lockb') }}
+             restore-keys: |
+               ${{ runner.os }}-vitepress-
          - name: Setup Pages
            uses: actions/configure-pages@v4
          - name: Install dependencies
@@ -196,14 +230,14 @@ Cache-Control: max-age=31536000,immutable
 
 3. Внесите свои изменения в ветку `main` и дождитесь завершения процесса GitHub Actions. Вы должны увидеть, что ваш сайт развёрнут по адресу `https://<username>.github.io/[repository]/` или `https://<custom-domain>/` в зависимости от ваших настроек. Ваш сайт будет автоматически разворачиваться при каждом внесении изменений в ветке `main`.
 
-### GitLab Pages {#gitlab-pages}
+### GitLab Pages
 
-1. Установите `outDir` в конфигурации VitePress на `../public`. Настройте опцию `base` на `'/<репозиторий>/'`, если вы хотите развернуть ваш проект по адресу на `https://<имя пользователя>.gitlab.io/<репозиторий>/`.
+1. Установите значение `../public` для параметра `outDir` в конфигурации VitePress. Настройте опцию `base` на `'/<репозиторий>/'`, если вы хотите развернуть ваш проект по адресу `https://<имя пользователя>.gitlab.io/<репозиторий>/`. Вам не нужна опция `base`, если вы выполняете развёртывание на личном домене, страницах пользователя или группы, или если в GitLab включен параметр «Использовать уникальный домен».
 
 2. Создайте файл с именем `.gitlab-ci.yml` в корне вашего проекта с приведённым ниже содержимым. Это позволит создавать и развёртывать ваш сайт каждый раз, когда вы вносите изменения в его содержимое:
 
-   ```yaml
-   image: node:18
+   ```yaml [.gitlab-ci.yml]
+   image: node:24
    pages:
      cache:
        paths:
@@ -219,7 +253,9 @@ Cache-Control: max-age=31536000,immutable
        - main
    ```
 
-### Статические веб-приложения Azure {#azure-static-web-apps}
+<!-- keep headings sorted alphabetically, leave nginx at the end -->
+
+### Azure
 
 1. Следуйте [официальной документации](https://docs.microsoft.com/ru-ru/azure/static-web-apps/build-configuration).
 
@@ -229,13 +265,17 @@ Cache-Control: max-age=31536000,immutable
    - **`output_location`**: `docs/.vitepress/dist`
    - **`app_build_command`**: `npm run docs:build`
 
-### Firebase {#firebase}
+### CloudRay
+
+Вы можете развернуть свой проект VitePress с [CloudRay](https://cloudray.io/), следуя этим [инструкциям](https://cloudray.io/articles/how-to-deploy-vitepress-site).
+
+### Firebase
 
 1. Создайте `firebase.json` и `.firebaserc` в корне вашего проекта:
 
    `firebase.json`:
 
-   ```json
+   ```json [firebase.json]
    {
      "hosting": {
        "public": "docs/.vitepress/dist",
@@ -246,7 +286,7 @@ Cache-Control: max-age=31536000,immutable
 
    `.firebaserc`:
 
-   ```json
+   ```json [.firebaserc]
    {
      "projects": {
        "default": "<YOUR_FIREBASE_ID>"
@@ -260,78 +300,93 @@ Cache-Control: max-age=31536000,immutable
    firebase deploy
    ```
 
-### Surge {#surge}
-
-1. После запуска `npm run docs:build` выполните эту команду для развёртывания:
-
-   ```sh
-   npx surge docs/.vitepress/dist
-   ```
-
-### Heroku {#heroku}
+### Heroku
 
 1. Следуйте документации и руководству, приведённому в [`heroku-buildpack-static`](https://elements.heroku.com/buildpacks/heroku/heroku-buildpack-static).
 
 2. Создайте файл `static.json` в корне вашего проекта со следующим содержимым:
 
-   ```json
+   ```json [static.json]
    {
      "root": "docs/.vitepress/dist"
    }
    ```
 
-### Edgio {#edgio}
+### Hostinger
 
-См. [Создание и развёртывание приложения VitePress в Edgio](https://docs.edg.io/applications/v6/sites_frameworks/getting_started/vitepress).
-
-### Хостинг статических файлов Kinsta {#kinsta-static-site-hosting}
-
-Вы можете развернуть свой сайт Vitepress на [Kinsta](https://kinsta.com/static-site-hosting/), следуя этим [инструкциям](https://kinsta.com/docs/vitepress-static-site-example/).
+Вы можете развернуть свой проект VitePress на [Hostinger](https://www.hostinger.com/web-apps-hosting), следуя этим [инструкциям](https://www.hostinger.com/support/how-to-deploy-a-nodejs-website-in-hostinger/). При настройке параметров сборки выберите VitePress в качестве фреймворка и укажите корневой каталог `./docs`.
 
 ### Stormkit
 
 Вы можете развернуть свой проект VitePress на [Stormkit](https://www.stormkit.io), следуя следующим [инструкциям](https://stormkit.io/blog/how-to-deploy-vitepress).
+
+### Surge
+
+После запуска `npm run docs:build` выполните эту команду для развёртывания на [Surge](https://surge.sh):
+
+```sh
+npx surge docs/.vitepress/dist
+```
+
+### harvis
+
+После выполнения `npm run docs:build` выполните эту команду для развёртывания на [harvis](https://harvis.dev):
+
+```sh
+npx harvis docs/.vitepress/dist
+```
 
 ### Nginx
 
 Вот пример конфигурации блока сервера Nginx. Эта настройка включает сжатие gzip для общих текстовых ресурсов, правила обслуживания статических файлов вашего сайта VitePress с правильными заголовками кэширования и обработку параметра `cleanUrls: true`.
 
 ```nginx
-server {
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+map $uri $cache_control {
+    ~^/assets/  "public, max-age=31536000, immutable";
+    default     "no-cache";
+}
 
-    listen 80;
+server {
+    listen 8080;
+    listen [::]:8080;
     server_name _;
+
+    root /usr/share/nginx/html;
     index index.html;
+    charset utf-8;
+    server_tokens off;
+
+    absolute_redirect off;
+
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_types
+        application/javascript
+        application/json
+        application/manifest+json
+        image/svg+xml
+        text/css
+        text/javascript
+        text/plain;
+
+    add_header Cache-Control $cache_control always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
     location / {
-        # расположение контента
-        root /app;
-
-        # точные совпадения -> обратные чистые URL-адреса -> папки -> не найдены
-        try_files $uri $uri.html $uri/ =404;
-
-        # несуществующие страницы
-        error_page 404 /404.html;
-
-        # папка без index.html вызывает ошибку 403 в этой настройке
-        error_page 403 /404.html;
-
-        # настройка заголовков кэширования
-        # файлы в папке с ресурсами имеют хэши имён файлов
-        location ~* ^/assets/ {
-            expires 1y;
-            add_header Cache-Control "public, immutable";
-        }
+        try_files $uri $uri.html $uri/index.html =404;
     }
+
+    location ~ ^(?<page>.+)/$ {
+        if (-f $document_root$page.html) {
+            return 301 $page$is_args$args;
+        }
+        try_files $page/index.html =404;
+    }
+
+    error_page 404 /404.html;
 }
 ```
-
-Эта конфигурация предполагает, что ваш собранный сайт VitePress находится в директории `/app`. При необходимости измените директиву `root`, если файлы вашего сайта расположены в другом месте.
-
-::: warning Не используйте index.html по умолчанию
-Разрешение try_files не должно использовать index.html, как это делается в других приложениях Vue. Это может привести к недопустимому состоянию страницы.
-:::
-
-Дополнительную информацию можно найти в официальной документации [Nginx](https://nginx.org/ru/docs/), а также в следующих обсуждениях: [#2837](https://github.com/vuejs/vitepress/discussions/2837), [#3235](https://github.com/vuejs/vitepress/issues/3235), а также в [блоге Mehdi Merah](https://blog.mehdi.cc/articles/vitepress-cleanurls-on-nginx-environment#readings).

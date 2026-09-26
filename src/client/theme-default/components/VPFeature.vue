@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { DefaultTheme } from 'vitepress/theme'
+
 import VPImage from './VPImage.vue'
 import VPLink from './VPLink.vue'
 
@@ -18,8 +19,8 @@ defineProps<{
   <VPLink
     class="VPFeature"
     :href="link"
-    :rel="rel"
-    :target="target"
+    :rel
+    :target
     :no-icon="true"
     :tag="link ? 'a' : 'div'"
   >
@@ -40,12 +41,14 @@ defineProps<{
         :width="icon.width || 48"
       />
       <div v-else-if="icon" class="icon" v-html="icon"></div>
-      <h2 class="title" v-html="title"></h2>
-      <p v-if="details" class="details" v-html="details"></p>
-
+      <h2 class="title"><bdi v-html="title" /></h2>
+      <ul v-if="Array.isArray(details)" class="details">
+        <li v-for="item in details" :key="item"><bdi v-html="item" /></li>
+      </ul>
+      <p v-else-if="details" class="details"><bdi v-html="details" /></p>
       <div v-if="linkText" class="link-text">
         <p class="link-text-value">
-          {{ linkText }} <span class="vpi-arrow-right link-text-icon" />
+          <bdi>{{ linkText }}</bdi> <span class="vpi-arrow-right link-text-icon" />
         </p>
       </div>
     </article>
@@ -56,7 +59,7 @@ defineProps<{
 .VPFeature {
   display: block;
   border: 1px solid var(--vp-c-bg-soft);
-  border-radius: 12px;
+  border-radius: 0.75rem;
   height: 100%;
   background-color: var(--vp-c-bg-soft);
   transition: border-color 0.25s, background-color 0.25s;
@@ -69,55 +72,60 @@ defineProps<{
 .box {
   display: flex;
   flex-direction: column;
-  padding: 24px;
+  padding: 1.5rem;
   height: 100%;
 }
 
 .box > :deep(.VPImage) {
-  margin-bottom: 20px;
+  margin-bottom: 1.25rem;
 }
 
 .icon {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-bottom: 20px;
-  border-radius: 6px;
+  margin-bottom: 1.25rem;
+  border-radius: 0.375rem;
   background-color: var(--vp-c-default-soft);
-  width: 48px;
-  height: 48px;
-  font-size: 24px;
+  width: 3rem;
+  height: 3rem;
+  font-size: 1.5rem;
   transition: background-color 0.25s;
 }
 
 .title {
-  line-height: 24px;
-  font-size: 16px;
+  line-height: 1.5;
+  font-size: 1rem;
   font-weight: 600;
 }
 
 .details {
   flex-grow: 1;
-  padding-top: 8px;
-  line-height: 24px;
-  font-size: 14px;
+  padding-top: 0.5rem;
+  line-height: 1.7142857;
+  font-size: 0.875rem;
   font-weight: 500;
   color: var(--vp-c-text-2);
 }
 
+ul.details {
+  list-style-type: disc;
+  padding-inline-start: 0.875rem;
+}
+
 .link-text {
-  padding-top: 8px;
+  padding-top: 0.5rem;
 }
 
 .link-text-value {
   display: flex;
   align-items: center;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
   color: var(--vp-c-brand-1);
 }
 
 .link-text-icon {
-  margin-left: 6px;
+  margin-inline-start: 0.375rem;
 }
 </style>

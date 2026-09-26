@@ -1,13 +1,18 @@
-import fs from 'fs-extra'
-import path from 'path'
-import glob from 'fast-glob'
-import type { SiteConfig } from './config'
+import { stat } from 'node:fs/promises'
+import path from 'node:path'
+
 import matter from 'gray-matter'
+import pMap from 'p-map'
 import { normalizePath } from 'vite'
+
+import type { SiteConfig } from './config'
 import {
   createMarkdownRenderer,
-  type MarkdownRenderer
+  mergeMarkdownLocales
 } from './markdown/markdown'
+import { getLocaleForPath, type Awaitable, type MarkdownEnv } from './shared'
+import { readTextFile } from './utils/fs'
+import { glob, normalizeGlob, type GlobOptions } from './utils/glob'
 
 export interface ContentOptions<T = ContentData[]> {
   /**
@@ -51,14 +56,12 @@ export interface ContentOptions<T = ContentData[]> {
    * Transform the data. Note the data will be inlined as JSON in the client
    * bundle if imported from components or markdown files.
    */
-  transform?: (data: ContentData[]) => T | Promise<T>
+  transform?: (data: ContentData[]) => Awaitable<T>
 
   /**
-   * Options to pass to `fast-glob`.
-   * You'll need to manually specify `node_modules` and `dist` in
-   * `globOptions.ignore` if you've overridden it.
+   * Options to pass to `tinyglobby` and `picomatch` for globbing.
    */
-  globOptions?: glob.Options
+  globOptions?: GlobOptions
 }
 
 export interface ContentData {
@@ -77,18 +80,9 @@ export function createContentLoader<T = ContentData[]>(
   /**
    * files to glob / watch - relative to srcDir
    */
-  pattern: string | string[],
-  {
-    includeSrc,
-    render,
-    excerpt: renderExcerpt,
-    transform,
-    globOptions
-  }: ContentOptions<T> = {}
-): {
-  watch: string | string[]
-  load: () => Promise<T>
-} {
+  watch: string | string[],
+  options: ContentOptions<T> = {}
+) {
   const config: SiteConfig = (global as any).VITEPRESS_CONFIG
   if (!config) {
     throw new Error(
@@ -97,81 +91,95 @@ export function createContentLoader<T = ContentData[]>(
     )
   }
 
-  if (typeof pattern === 'string') pattern = [pattern]
-  pattern = pattern.map((p) => normalizePath(path.join(config.srcDir, p)))
+  const cache = new Map<string, { data: any; timestamp: number }>()
 
-  let md: MarkdownRenderer
-
-  const cache = new Map<
-    string,
-    {
-      data: any
-      timestamp: number
-    }
-  >()
+  watch = normalizeGlob(watch, config.srcDir)
 
   return {
-    watch: pattern,
+    watch,
+    options: { globOptions: options.globOptions },
+
     async load(files?: string[]) {
-      if (!files) {
-        // the loader is being called directly, do a fresh glob
-        files = (
-          await glob(pattern, {
-            ignore: ['**/node_modules/**', '**/dist/**'],
-            ...globOptions
-          })
-        ).sort()
-      }
+      // the loader is being called directly, do a fresh glob
+      files ??= await glob(watch, {
+        absolute: true,
+        ...options.globOptions
+      })
 
-      md =
-        md ||
-        (await createMarkdownRenderer(
-          config.srcDir,
-          config.markdown,
-          config.site.base,
-          config.logger
-        ))
+      const md = await createMarkdownRenderer(
+        config.srcDir,
+        mergeMarkdownLocales(config.markdown, config.site.locales),
+        config.site.base,
+        config.logger,
+        config.publicDir
+      )
 
-      const raw: ContentData[] = []
+      const raw = await pMap(
+        files,
+        async (file) => {
+          if (!file.endsWith('.md')) return null
 
-      for (const file of files) {
-        if (!file.endsWith('.md')) {
-          continue
-        }
-        const timestamp = fs.statSync(file).mtimeMs
-        const cached = cache.get(file)
-        if (cached && timestamp === cached.timestamp) {
-          raw.push(cached.data)
-        } else {
-          const src = fs.readFileSync(file, 'utf-8')
+          const timestamp = (await stat(file)).mtimeMs
+          const cached = cache.get(file)
+
+          if (cached && timestamp === cached.timestamp) return cached.data
+
+          const src = await readTextFile(file)
+
+          const renderExcerpt = options.excerpt
           const { data: frontmatter, excerpt } = matter(
             src,
-            // @ts-expect-error gray-matter types are wrong
             typeof renderExcerpt === 'string'
               ? { excerpt_separator: renderExcerpt }
-              : { excerpt: renderExcerpt }
+              : { excerpt: renderExcerpt as any } // gray-matter types are wrong
           )
+
+          const relFile = normalizePath(path.relative(config.srcDir, file))
+          const relativePath = config.rewrites.map[relFile] || relFile
+
           const url =
             '/' +
-            normalizePath(path.relative(config.srcDir, file))
+            relativePath
               .replace(/(^|\/)index\.md$/, '$1')
               .replace(/\.md$/, config.cleanUrls ? '' : '.html')
-          const html = render ? md.render(src) : undefined
-          const renderedExcerpt = renderExcerpt
-            ? excerpt && md.render(excerpt)
+
+          // pass a markdown env so plugins (e.g. the internal link plugin)
+          // resolve links, `cleanUrls` and paths the same way as during a
+          // normal page render instead of falling back to defaults
+          const env: MarkdownEnv = {
+            path: file,
+            relativePath,
+            localeIndex: getLocaleForPath(config.site, relativePath),
+            cleanUrls: !!config.cleanUrls,
+            realPath: file,
+            // excerpts are rendered on their own, without the frontmatter
+            // block - provide the data so `$frontmatter` still resolves
+            frontmatter
+          }
+
+          const html = options.render
+            ? await md.renderAsync(src, env)
             : undefined
+          const renderedExcerpt = renderExcerpt
+            ? excerpt && (await md.renderAsync(excerpt, env))
+            : undefined
+
           const data: ContentData = {
-            src: includeSrc ? src : undefined,
+            src: options.includeSrc ? src : undefined,
             html,
             frontmatter,
             excerpt: renderedExcerpt,
             url
           }
+
           cache.set(file, { data, timestamp })
-          raw.push(data)
-        }
-      }
-      return (transform ? transform(raw) : raw) as any
+          return data
+        },
+        { concurrency: config.buildConcurrency }
+      )
+
+      const filtered = raw.filter((i) => i !== null)
+      return options.transform?.(filtered) ?? (filtered as T)
     }
   }
 }

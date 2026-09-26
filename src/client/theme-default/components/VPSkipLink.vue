@@ -1,50 +1,37 @@
 <script lang="ts" setup>
-import { ref, watch } from 'vue'
 import { useRoute } from 'vitepress'
+import { useTemplateRef, watch } from 'vue'
 
+import { useData } from '../composables/data'
+
+defineProps<{
+  // the component has two root nodes, so `inert` can't fall through
+  inert?: boolean
+}>()
+
+const { theme } = useData()
 const route = useRoute()
-const backToTop = ref()
+const backToTop = useTemplateRef('backToTop')
 
-watch(() => route.path, () => backToTop.value.focus())
-
-function focusOnTargetAnchor({ target }: Event) {
-  const el = document.getElementById(
-    decodeURIComponent((target as HTMLAnchorElement).hash).slice(1)
-  )
-
-  if (el) {
-    const removeTabIndex = () => {
-      el.removeAttribute('tabindex')
-      el.removeEventListener('blur', removeTabIndex)
-    }
-
-    el.setAttribute('tabindex', '-1')
-    el.addEventListener('blur', removeTabIndex)
-    el.focus()
-    window.scrollTo(0, 0)
-  }
-}
+watch(() => route.path, () => backToTop.value?.focus())
 </script>
 
 <template>
   <span ref="backToTop" tabindex="-1" />
-  <a
-    href="#VPContent"
-    class="VPSkipLink visually-hidden"
-    @click="focusOnTargetAnchor"
-  >
-    Skip to content
+  <a href="#VPContent" class="VPSkipLink visually-hidden" :inert>
+    {{ theme.skipToContentLabel || 'Skip to content' }}
   </a>
 </template>
 
 <style scoped>
 .VPSkipLink {
-  top: 8px;
-  left: 8px;
-  padding: 8px 16px;
+  position: fixed;
+  top: 0.5rem;
+  inset-inline-start: 0.5rem;
+  padding: 0.5rem 1rem;
   z-index: 999;
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
   font-weight: bold;
   text-decoration: none;
   color: var(--vp-c-brand-1);
@@ -59,10 +46,10 @@ function focusOnTargetAnchor({ target }: Event) {
   clip-path: none;
 }
 
-@media (min-width: 1280px) {
+@media (min-width: 80rem) {
   .VPSkipLink {
-    top: 14px;
-    left: 16px;
+    top: 0.875rem;
+    inset-inline-start: 1rem;
   }
 }
 </style>

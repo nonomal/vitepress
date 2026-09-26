@@ -4,10 +4,10 @@ import {
   createSSRApp,
   defineComponent,
   h,
-  onMounted,
   watchEffect,
   type App
 } from 'vue'
+
 import { ClientOnly } from './components/ClientOnly'
 import { Content } from './components/Content'
 import { useCodeGroups } from './composables/codeGroups'
@@ -25,8 +25,12 @@ function resolveThemeExtends(theme: typeof RawTheme): typeof RawTheme {
       ...base,
       ...theme,
       async enhanceApp(ctx) {
-        if (base.enhanceApp) await base.enhanceApp(ctx)
-        if (theme.enhanceApp) await theme.enhanceApp(ctx)
+        await base.enhanceApp?.(ctx)
+        await theme.enhanceApp?.(ctx)
+      },
+      setup() {
+        base.setup?.()
+        theme.setup?.()
       }
     }
   }
@@ -40,13 +44,14 @@ const VitePressApp = defineComponent({
   setup() {
     const { site, lang, dir } = useData()
 
-    // change the language on the HTML element based on the current lang
-    onMounted(() => {
+    // keep the html element's lang and dir in sync with the page, before
+    // the theme mounts so anything it measures already has the right direction
+    if (inBrowser) {
       watchEffect(() => {
         document.documentElement.lang = lang.value
         document.documentElement.dir = dir.value
       })
-    })
+    }
 
     if (import.meta.env.PROD && site.value.router.prefetchLinks) {
       // in prod mode, enable intersectionObserver based pre-fetch
@@ -93,6 +98,12 @@ export async function createApp() {
     }
   })
 
+  // set before enhanceApp so users can still disable it or take over with their own errorHandler;
+  // unhandled errors then fail the build instead of silently shipping broken pages
+  if (import.meta.env.SSR) {
+    app.config.throwUnhandledErrorInProduction = true
+  }
+
   if (Theme.enhanceApp) {
     await Theme.enhanceApp({
       app,
@@ -119,26 +130,32 @@ function newApp(): App {
 
 function newRouter(): Router {
   let isInitialPageLoad = inBrowser
-  let initialPath: string
 
   return createRouter((path) => {
     let pageFilePath = pathToFile(path)
     let pageModule = null
 
     if (pageFilePath) {
+      // use lean build if this is the initial page load
       if (isInitialPageLoad) {
-        initialPath = pageFilePath
-      }
-
-      // use lean build if this is the initial page load or navigating back
-      // to the initial loaded path (the static vnodes already adopted the
-      // static content on that load so no need to re-fetch the page)
-      if (isInitialPageLoad || initialPath === pageFilePath) {
         pageFilePath = pageFilePath.replace(/\.js$/, '.lean.js')
       }
 
-      if (import.meta.env.SSR) {
-        pageModule = import(/*@vite-ignore*/ pageFilePath + '?t=' + Date.now())
+      if (import.meta.env.DEV) {
+        pageModule = import(/*@vite-ignore*/ pageFilePath).catch((e) => {
+          // page load could fail for other reasons, don't swallow
+          console.error(e)
+          // try with/without trailing slash
+          // in prod this is handled in src/client/app/utils.ts#pathToFile
+          const url = new URL(pageFilePath!, 'http://a.com')
+          const path =
+            (url.pathname.endsWith('/index.md')
+              ? url.pathname.slice(0, -9) + '.md'
+              : url.pathname.slice(0, -3) + '/index.md') +
+            url.search +
+            url.hash
+          return import(/*@vite-ignore*/ path)
+        })
       } else {
         pageModule = import(/*@vite-ignore*/ pageFilePath)
       }
@@ -155,19 +172,14 @@ function newRouter(): Router {
 if (inBrowser) {
   createApp().then(({ app, router, data }) => {
     // wait until page component is fetched before mounting
-    router.go().then(() => {
+    router.go(location.href, { initialLoad: true }).then(() => {
       // dynamically update head tags
       useUpdateHead(router.route, data.site)
       app.mount('#app')
 
       // scroll to hash on new tab during dev
       if (import.meta.env.DEV && location.hash) {
-        const target = document.getElementById(
-          decodeURIComponent(location.hash).slice(1)
-        )
-        if (target) {
-          scrollTo(target, location.hash)
-        }
+        setTimeout(() => scrollTo(location.hash), 100)
       }
     })
   })

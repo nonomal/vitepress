@@ -1,4 +1,5 @@
 ---
+description: Полный справочник по параметрам конфигурации сайта VitePress, включая настройки приложения, темы и сборки.
 outline: deep
 ---
 
@@ -10,7 +11,7 @@ outline: deep
 
 ### Разрешение конфигурации {#config-resolution}
 
-Файл конфигурации всегда разрешается из `<root>/.vitepress/config.[ext]`, где `<root>` — это корень вашего [проекта](../guide/routing#root-and-source-directory) VitePress, а `[ext]` — одно из поддерживаемых расширений файла. TypeScript поддерживается из коробки. Поддерживаемые расширения включают `.js`, `.ts`, `.mjs` и `.mts`.
+Конфигурация всегда считывается из файла `<root>/.vitepress/config.[ext]`, где `<root>` — это корень вашего [проекта](../guide/routing#root-and-source-directory) VitePress, а `[ext]` — одно из поддерживаемых расширений файла. TypeScript поддерживается из коробки. Поддерживаемые расширения включают `.js`, `.ts`, `.mjs` и `.mts`.
 
 В файлах конфигурации рекомендуется использовать синтаксис ES-модулей. Файл конфигурации должен по умолчанию экспортировать объект:
 
@@ -24,7 +25,7 @@ export default {
 }
 ```
 
-:::details Динамическая (асинхронная) конфигурация
+::: details Динамическая (асинхронная) конфигурация
 
 Если вам нужно генерировать конфигурацию динамически, вы также можете экспортировать функцию по умолчанию. Например:
 
@@ -133,13 +134,43 @@ export default defineConfigWithTheme<ThemeConfig>({
 
   Вы можете настроить базовый экземпляр [Markdown-It](https://github.com/markdown-it/markdown-it) с помощью опции [markdown](#markdown) в конфигурации VitePress.
 
+### Переопределение на уровне страницы {#page-level-overrides}
+
+Некоторые настройки можно переопределить для отдельных страниц с помощью метаданных.
+
+Подробности см. в разделе [Конфигурация метаданных](./frontmatter-config).
+
+### Переопределение на уровне директории {#directory-level-overrides}
+
+Некоторые параметры конфигурации можно переопределить на уровне директории, что позволяет всем страницам в этой директории использовать общие настройки без необходимости повторять их в блоке метаданных каждой страницы.
+
+Для этого добавьте файл с именем `config.ts` (или `.js`, `.mjs` или `.mts`) в соответствующую директорию. Этот файл должен экспортировать объект конфигурации с помощью `export default`, аналогично основному файлу конфигурации.
+
+Вложенные директории наследуют настройки от родительской директории, при этом переопределения конфигурации объединяются соответствующим образом.
+
+Вспомогательную функцию `defineAdditionalConfig` можно использовать для получения подсказок TypeScript по доступным параметрам, однако, как и в случае с `defineConfig`, её использование необязательно.
+
+Например, для сайта с несколькими языками может потребоваться разное значение `description` для каждого языка. Мы можем добавить файл `es/config.ts` со следующим содержимым:
+
+```ts
+import { defineAdditionalConfig } from 'vitepress'
+
+export default defineAdditionalConfig({
+  description: 'Generador de Sitios Estáticos desarrollado con Vite y Vue.'
+})
+```
+
+Этот `description` затем будет использоваться для всех страниц в директории `es`.
+
+В качестве альтернативы, при использовании встроенных возможностей i18n настройки для директории локали можно переопределить через параметр `locales` в основном файле конфигурации. Подробности см. в разделе [Интернационализация](../guide/i18n).
+
 ## Метаданные сайта {#site-metadata}
 
 ### title {#title}
 
 - Тип: `string`
 - По умолчанию: `VitePress`
-- Можно переопределить для каждой страницы с помощью [метаданных](./frontmatter-config#title)
+- Можно переопределить для каждой страницы с помощью [метаданных](./frontmatter-config#title) или на [уровне директории](#directory-level-overrides)
 
 Название для сайта. При использовании темы по умолчанию оно будет отображаться в панели навигации.
 
@@ -160,7 +191,7 @@ export default {
 ### titleTemplate {##titletemplate}
 
 - Тип: `string | boolean`
-- Можно переопределить для каждой страницы с помощью [метаданных](./frontmatter-config#titletemplate)
+- Можно переопределить для каждой страницы с помощью [метаданных](./frontmatter-config#titletemplate) или на [уровне директории](#directory-level-overrides)
 
 Позволяет настраивать суффикс заголовка каждой страницы или весь заголовок. Например:
 
@@ -193,7 +224,7 @@ export default {
 
 - Тип: `string`
 - По умолчанию: `A VitePress site`
-- Можно переопределить для каждой страницы с помощью [метаданных](./frontmatter-config#description)
+- Можно переопределить для каждой страницы с помощью [метаданных](./frontmatter-config#description) или на [уровне директории](#directory-level-overrides)
 
 Описание для сайта. Это будет отображаться как тег `<meta>` в HTML-странице.
 
@@ -207,7 +238,7 @@ export default {
 
 - Тип: `HeadConfig[]`
 - По умолчанию: `[]`
-- Можно добавлять на страницу через [метаданные](./frontmatter-config#head)
+- Можно добавлять на страницу через [метаданные](./frontmatter-config#head) или на [уровне директории](#directory-level-overrides)
 
 Дополнительные элементы для отображения в теге `<head>` в HTML-странице. Добавленные пользователем теги выводятся перед закрывающим тегом `head`, после тегов VitePress.
 
@@ -216,6 +247,13 @@ type HeadConfig =
   | [string, Record<string, string>]
   | [string, Record<string, string>, string]
 ```
+
+Записи head из конфигурации сайта, [конфигурации локали](../guide/i18n), [конфигурации на уровне директории](#directory-level-overrides), [метаданные](./frontmatter-config#head) и [`transformHead`](#transformhead) объединяются в этом порядке. Более поздняя запись заменяет более раннюю с тем же ключом вместо того, чтобы добавляться к ней:
+
+- Любой элемент с атрибутом `id` идентифицируется по своему `id`.
+- Элемент `meta` без `id` идентифицируется по своему первому атрибуту, отличному от `content` (например, `name`, `property`, `http-equiv`), и значению этого атрибута.
+
+Остальные элементы никогда не считаются повторяющимися и не заменяют друг друга. Чтобы отрисовать несколько тегов `meta`, которые имели бы одинаковый ключ, например несколько `<meta name="author">`, задайте каждому из них уникальный `id`
 
 #### Пример: Добавление значка сайта {#example-adding-a-favicon}
 
@@ -319,6 +357,7 @@ export default {
 
 - Тип: `string`
 - По умолчанию: `en-US`
+- Может быть переопределено [на уровне директории](#directory-level-overrides)
 
 Атрибут lang для сайта. Будет выглядеть как тег `<html lang="en-US">` в HTML-странице.
 
@@ -335,6 +374,8 @@ export default {
 
 Базовый URL-адрес, по которому будет развёрнут сайт. Этот параметр необходимо задать, если вы планируете развернуть свой сайт по подпути, например, для страниц GitHub. Если вы планируете развернуть свой сайт на `https://foo.github.io/bar/`, то вам следует установить base на `'/bar/'`. Он всегда должен начинаться и заканчиваться косой чертой.
 
+Единственное исключение — `'./'`, которое создаёт [переносимую сборку](../guide/deploy#relocatable-builds-relative-base): страницы ссылаются на всё относительно своего собственного расположения, поэтому один и тот же результат сборки работает из любого подпути (шлюзы IPFS, архивы) без пересборки и остаётся просматриваемым при открытии напрямую из файловой системы.
+
 Параметр `base` автоматически добавляется ко всем URL, которые начинаются с `/` в других опциях, поэтому вам нужно указать его только один раз.
 
 ```ts
@@ -343,6 +384,8 @@ export default {
 }
 ```
 
+Также может быть задан для отдельной сборки с помощью `vitepress build --base /base/`.
+
 ## Маршрутизация {#routing}
 
 ### cleanUrls {#cleanurls}
@@ -350,7 +393,7 @@ export default {
 - Тип: `boolean`
 - По умолчанию: `false`
 
-Если установить значение `true`, VitePress будет удалять из URL-адресов завершающий `.html`. Также смотрите [Создание чистого URL-адреса](../guide/routing#generating-clean-url).
+Если установить значение `true`, VitePress будет удалять из URL-адресов завершающий `.html`. Также смотрите [Создание чистых URL-адресов](../guide/routing#generating-clean-urls).
 
 ::: warning Требуется поддержка сервера
 Для включения этой функции может потребоваться дополнительная настройка на вашей хостинговой платформе. Чтобы это сработало, ваш сервер должен быть способен обслуживать `/foo.html` при посещении `/foo` **без редиректа**.
@@ -387,7 +430,7 @@ export default {
 
 ### srcExclude {#srcexclude}
 
-- Тип: `string`
+- Тип: `string[]`
 - По умолчанию: `undefined`
 
 [Шаблон](https://github.com/mrmlnc/fast-glob#pattern-syntax) для поиска файлов, которые должны быть исключены из исходного содержимого.
@@ -424,12 +467,50 @@ export default {
 }
 ```
 
+### assetsBase
+
+- Тип: `string`
+- По умолчанию: `undefined`
+
+Префикс URL, с которого раздаются сгенерированные ресурсы (всё, что находится под [`assetsDir`](#assetsdir)) — обычно CDN. Должен быть абсолютным URL, URL без указания протокола (начинающимся с `//`) или абсолютным путём от корня сайта (начинающимся с `/`); при отсутствии завершающего слэша он добавляется автоматически.
+
+```ts
+export default {
+  base: '/',
+  assetsBase: 'https://cdn.example.com/'
+  // скрипты, стили, шрифты и импортированные изображения разрешаются в
+  // https://cdn.example.com/assets/*
+}
+```
+
+Итоговый URL ресурса — это `assetsBase`, объединённый с относительным путём файла в выводе, поэтому CDN должен зеркалировать структуру `outDir` (загрузите `outDir/assets`, чтобы он был доступен по адресу `<assetsBase>/assets/*`). HTML-страницы, ссылки Markdown, файлы [`public`](../guide/asset-handling#the-public-directory) и `hashmap.json` остаются на [`base`](#base).
+
+Когда `assetsBase` указывает на другой домен, VitePress добавляет `crossorigin` к сгенерированным тегам script и preload — CDN должен отправлять `Access-Control-Allow-Origin` для домена вашего сайта (модульные скрипты всегда загружаются в режиме CORS).
+
+Это влияет только на продакшен-сборки. Команда `vitepress preview` раздаёт значение `assetsBase`, заданное как путь от корня сайта (например, `/cdn/`), из локальной папки dist, а внешний адрес — запрашивает напрямую по настоящему URL. Значение также можно задать для отдельной сборки с помощью `vitepress build --assetsBase https://cdn.example.com/`.
+
+### icons
+
+- Тип: `{ include?: string[] }`
+
+Опции для сгенерированных стилей иконок. Сборка собирает каждую иконку iconify, отрисованную во время SSR. Имена указываются полностью в формате `collection:name`, разрешаясь относительно пакетов `@iconify-json/*`, объявленных в зависимостях вашего проекта.
+
+Иконки, отрисовываемые только на клиенте — внутри `<ClientOnly>` или после гидратации — невидимы для сбора во время SSR. Перечислите их в `include`, чтобы принудительно добавить в таблицу стилей:
+
+```ts
+export default {
+  icons: {
+    include: ['mdi:home', 'simple-icons:discord']
+  }
+}
+```
+
 ### cacheDir {#cachedir}
 
 - Тип: `string`
 - По умолчанию: `./.vitepress/cache`
 
-Каталог для файлов кэша, относительно [корня проекта](../guide/routing#root-and-source-directory). См. также: [cacheDir](https://vitejs.dev/config/shared-options.html#cachedir).
+Каталог для файлов кэша, относительно [корня проекта](../guide/routing#root-and-source-directory). См. также: [cacheDir](https://vite-docs.ru/config/shared-options.html#cachedir).
 
 ```ts
 export default {
@@ -439,7 +520,7 @@ export default {
 
 ### ignoreDeadLinks {#ignoredeadlinks}
 
-- Тип: `boolean | 'localhostLinks' | (string | RegExp | ((link: string) => boolean))[]`
+- Тип: `boolean | 'localhostLinks' | (string | RegExp | ((link: string, source: string) => boolean))[]`
 - По умолчанию: `false`
 
 Если установлено значение `true`, VitePress не будет завершать сборку из-за неработающих ссылок.
@@ -471,13 +552,6 @@ export default {
 }
 ```
 
-### metaChunk <Badge type="warning" text="экспериментально" /> {#metachunk}
-
-- Тип: `boolean`
-- По умолчанию: `false`
-
-Если установлено значение `true`, метаданные страницы извлекаются в отдельный фрагмент JavaScript, а не вставляются в исходный HTML. Это уменьшает полезную нагрузку HTML каждой страницы и делает метаданные страниц кэшируемыми, что позволяет снизить пропускную способность сервера при наличии большого количества страниц на сайте.
-
 ### mpa <Badge type="warning" text="экспериментально" /> {#mpa}
 
 - Тип: `boolean`
@@ -489,7 +563,7 @@ export default {
 
 ### appearance {#appearance}
 
-- Тип: `boolean | 'dark' | 'force-dark' | import('@vueuse/core').UseDarkOptions`
+- Тип: `boolean | 'dark' | 'force-dark' | 'force-auto' | import('@vueuse/core').UseDarkOptions`
 - По умолчанию: `true`
 
 Включать ли тёмный режим (путём добавления класса `.dark` к элементу `<html>`).
@@ -497,6 +571,8 @@ export default {
 - Если опция имеет значение `true`, тема по умолчанию будет определяться цветовой гаммой, предпочитаемой пользователем.
 - Если опция имеет значение `dark`, тема по умолчанию будет тёмной, если пользователь не переключит её вручную.
 - Если установить значение `false`, пользователи не смогут переключать тему.
+- Если для опции установлено значение `force-dark`, тема всегда будет темной, и пользователи не смогут её переключать.
+- Если для опции установлено значение `force-auto`, тема всегда будет определяться предпочитаемой пользователем цветовой схемой, и пользователи не смогут её переключать.
 
 Эта опция вставляет встроенный скрипт, который восстанавливает настройки пользователей из локального хранилища с помощью ключа `vitepress-theme-appearance`. Это гарантирует, что класс `.dark` будет применён до отрисовки страницы, чтобы избежать мерцания.
 
@@ -509,7 +585,7 @@ export default {
 
 Получать ли временную метку последнего обновления для каждой страницы с помощью Git. Временная метка будет включена в данные каждой страницы, доступные через [`useData`](./runtime-api#usedata).
 
-При использовании темы по умолчанию включение этой опции приведёт к отображению времени последнего обновления каждой страницы. Вы можете настроить текст с помощью опции [`themeConfig.lastUpdatedText`](./default-theme-config#lastupdatedtext).
+При использовании темы по умолчанию включение этой опции приведёт к отображению времени последнего обновления каждой страницы. Вы можете настроить текст с помощью опции [`themeConfig.lastUpdated.text`](./default-theme-config#lastupdated).
 
 ## Кастомизация {#customization}
 
@@ -527,11 +603,13 @@ export default {
 
 Проверьте [объявление типа и jsdocs](https://github.com/vuejs/vitepress/blob/main/src/node/markdown/markdown.ts) на наличие всех доступных опций.
 
+Установите `markdown.headers` в значение `true` или передайте параметры [`@mdit-vue/plugin-headers`](https://github.com/mdit-vue/mdit-vue/tree/main/packages/plugin-headers), чтобы собирать заголовки в [`useData().page.headers`](./runtime-api#usedata). Этот параметр отключён по умолчанию.
+
 ### vite {#vite}
 
 - Тип: `import('vite').UserConfig`
 
-Передаёт необработанную [конфигурацию Vite](https://vitejs.dev/config/) внутреннему серверу разработки / сборщику Vite.
+Передаёт необработанную [конфигурацию Vite](https://vite-docs.ru/config/) внутреннему серверу разработки / сборщику Vite.
 
 ```js
 export default {
@@ -596,6 +674,7 @@ export default {
 interface SSGContext {
   content: string
   teleports?: Record<string, string>
+  vpIcons: Set<string>
   [key: string]: any
 }
 ```
@@ -604,10 +683,14 @@ interface SSGContext {
 
 - Тип: `(context: TransformContext) => Awaitable<HeadConfig[]>`
 
-`transformHead` — это хук сборки для преобразования заголовка перед генерацией каждой страницы. Это позволит вам добавить в конфигурацию VitePress записи, которые не могут быть добавлены статически. Вам нужно только вернуть дополнительные записи, они будут автоматически объединены с существующими.
+`transformHead` — это хук сборки для добавления дополнительных тегов в `<head>` каждой страницы. Он позволяет добавлять элементы в head, которые невозможно статически добавить в конфигурацию VitePress. Вам нужно только вернуть дополнительные элементы — они будут автоматически объединены с уже существующими.
 
 ::: warning ПРЕДУПРЕЖДЕНИЕ
 Не мутируйте ничего внутри `context`.
+:::
+
+::: note
+Ссылка на таблицу стилей иконок на этом этапе всё ещё содержит заглушку `vp-icons.__VP_ICONS_HASH__.css` — хеш содержимого появляется только после того, как отрендерены все страницы, и подставляется сразу после этого. Хуки, которые встраивают или проставляют отпечаток ресурсам в head, должны пропускать этот тег.
 :::
 
 ```ts
@@ -632,43 +715,37 @@ interface TransformContext {
 }
 ```
 
-Обратите внимание, что этот хук вызывается только при статической генерации сайта. Он не вызывается во время разработки. Если вам нужно добавить динамические записи в голову во время разработки, вместо этого вы можете использовать хук [`transformPageData`](#transformpagedata):
+Этот хук вызывается только при выполнении сборки и не вызывается в режиме разработки.
+
+Дополнительные теги будут добавлены в статические HTML-файлы, созданные во время сборки. Они не будут обновляться при навигации на стороне клиента.
+
+Во многих случаях более подходящим решением будет использование хука [`transformPageData`](#transformpagedata). Этот хук также применяется как при клиентской навигации, так и в режиме разработки. Однако если генерация тегов head требует значительных вычислительных ресурсов, `transformHead` позволяет избежать этих затрат во время разработки.
+
+#### Пример: добавление мета-тега `og:image` {#example-adding-og-image-meta}
 
 ```ts
 export default {
-  transformPageData(pageData) {
-    pageData.frontmatter.head ??= []
-    pageData.frontmatter.head.push([
+  async transformHead(context) {
+    if (context.page === '404.md') {
+      return
+    }
+
+    // Детали реализации `generatePageImage` зависят от ваших требований.
+    // Здесь мы предполагаем, что она создаёт подходящее изображение
+    // для каждой страницы и возвращает URL изображения.
+    const imageUrl = await generatePageImage(context)
+
+    return [[
       'meta',
-      {
-        name: 'og:title',
-        content:
-          pageData.frontmatter.layout === 'home'
-            ? `VitePress`
-            : `${pageData.title} | VitePress`
-      }
-    ])
+      { name: 'og:image', content: imageUrl }
+    ]]
   }
 }
 ```
 
-#### Пример: Добавление канонического URL-адреса `<link>` {#example-adding-a-canonical-url-link}
+Здесь мы предполагаем, что URL изображения является динамическим и требует много времени для генерации. Использование `transformHead` позволяет избежать этих затрат во время разработки.
 
-```ts
-export default {
-  transformPageData(pageData) {
-    const canonicalUrl = `https://example.com/${pageData.relativePath}`
-      .replace(/index\.md$/, '')
-      .replace(/\.md$/, '.html')
-
-    pageData.frontmatter.head ??= []
-    pageData.frontmatter.head.push([
-      'link',
-      { rel: 'canonical', href: canonicalUrl }
-    ])
-  }
-}
-```
+Для более простых случаев может быть достаточно использовать параметр [`head`](./frontmatter-config#head) в метаданных или [`transformPageData`](#transformpagedata).
 
 ### transformHtml {#transformhtml}
 
@@ -716,5 +793,41 @@ export default {
 ```ts
 interface TransformPageContext {
   siteConfig: SiteConfig
+}
+```
+
+#### Пример: добавление `<meta name="og:title">` {#example-adding-a-meta-name-og-title}
+
+```ts
+export default {
+  transformPageData(pageData) {
+    const title = pageData.frontmatter.layout === 'home'
+      ? 'VitePress'
+      : `${pageData.title} | VitePress`
+
+    pageData.frontmatter.head ??= []
+    pageData.frontmatter.head.push([
+      'meta',
+      { name: 'og:title', content: title }
+    ])
+  }
+}
+```
+
+#### Пример: добавление `<link>` с каноническим URL {#example-adding-a-canonical-url-link}
+
+```ts
+export default {
+  transformPageData(pageData) {
+    const canonicalUrl = `https://example.com/${pageData.relativePath}`
+      .replace(/index\.md$/, '')
+      .replace(/\.md$/, '.html')
+
+    pageData.frontmatter.head ??= []
+    pageData.frontmatter.head.push([
+      'link',
+      { rel: 'canonical', href: canonicalUrl }
+    ])
+  }
 }
 ```

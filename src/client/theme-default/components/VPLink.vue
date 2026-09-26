@@ -1,18 +1,23 @@
 <script lang="ts" setup>
 import { computed } from 'vue'
-import { normalizeLink } from '../support/utils'
-import { EXTERNAL_URL_RE } from '../../shared'
 
-const props = defineProps<{
+import { isLinkExternal, normalizeLink } from '../support/utils'
+
+const props = withDefaults(defineProps<{
   tag?: string
   href?: string
   noIcon?: boolean
+  external?: boolean
   target?: string
   rel?: string
-}>()
+}>(), {
+  external: undefined
+})
 
 const tag = computed(() => props.tag ?? (props.href ? 'a' : 'span'))
-const isExternal = computed(() => props.href && EXTERNAL_URL_RE.test(props.href))
+const isExternal = computed(() =>
+  isLinkExternal(props.href, props.target, props.external)
+)
 </script>
 
 <template>

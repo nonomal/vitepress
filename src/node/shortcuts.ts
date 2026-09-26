@@ -1,89 +1,27 @@
-import type { ViteDevServer } from 'vite'
 import c from 'picocolors'
-import { clearCache } from './markdownToVue'
+import type { ViteDevServer } from 'vite'
 
-type CreateDevServer = () => Promise<void>
+import type { Awaitable } from './shared'
 
 export type CLIShortcut = {
   key: string
   description: string
   action(
     server: ViteDevServer,
-    createDevServer: CreateDevServer
-  ): void | Promise<void>
-}
-
-export function bindShortcuts(
-  server: ViteDevServer,
-  createDevServer: CreateDevServer
-): void {
-  if (!server.httpServer || !process.stdin.isTTY || process.env.CI) {
-    return
-  }
-
-  server.config.logger.info(
-    c.dim(c.green('  ➜')) +
-      c.dim('  press ') +
-      c.bold('h') +
-      c.dim(' to show help')
-  )
-
-  let actionRunning = false
-
-  const onInput = async (input: string) => {
-    // ctrl+c or ctrl+d
-    if (input === '\x03' || input === '\x04') {
-      await server.close().finally(() => process.exit(1))
-      return
-    }
-
-    if (actionRunning) return
-
-    if (input === 'h') {
-      server.config.logger.info(
-        [
-          '',
-          c.bold('  Shortcuts'),
-          ...SHORTCUTS.map(
-            (shortcut) =>
-              c.dim('  press ') +
-              c.bold(shortcut.key) +
-              c.dim(` to ${shortcut.description}`)
-          )
-        ].join('\n')
-      )
-    }
-
-    const shortcut = SHORTCUTS.find((shortcut) => shortcut.key === input)
-    if (!shortcut) return
-
-    actionRunning = true
-    await shortcut.action(server, createDevServer)
-    actionRunning = false
-  }
-
-  process.stdin.setRawMode(true)
-
-  process.stdin.on('data', onInput).setEncoding('utf8').resume()
-
-  server.httpServer.on('close', () => {
-    process.stdin.off('data', onInput).pause()
-    process.stdin.setRawMode(false)
-  })
+    restartServer: () => Promise<void>
+  ): Awaitable<void>
 }
 
 const SHORTCUTS: CLIShortcut[] = [
   {
     key: 'r',
     description: 'restart the server',
-    async action(server, createDevServer) {
+    async action(server, restartServer) {
       server.config.logger.info(c.green(`restarting server...\n`), {
         clear: true,
         timestamp: true
       })
-      clearCache()
-      await server.close()
-      await createDevServer()
+      await restartServer()
     }
   },
   {
@@ -116,3 +54,64 @@ const SHORTCUTS: CLIShortcut[] = [
     }
   }
 ]
+
+export function bindShortcuts(
+  server: ViteDevServer,
+  restartServer: () => Promise<void>
+): void {
+  if (!server.httpServer || !process.stdin.isTTY || process.env.CI) {
+    return
+  }
+
+  server.config.logger.info(
+    c.dim(c.green('  ➜')) +
+      c.dim('  press ') +
+      c.bold('h') +
+      c.dim(' to show help')
+  )
+
+  let actionRunning = false
+
+  const onInput = async (input: string) => {
+    // ctrl+c or ctrl+d
+    if (input === '\x03' || input === '\x04') {
+      await server.close().finally(() => process.exit(1))
+      return
+    }
+
+    if (actionRunning) return
+
+    input = input.trim().toLowerCase()
+
+    if (input === 'h') {
+      server.config.logger.info(
+        [
+          '',
+          c.bold('  Shortcuts'),
+          ...SHORTCUTS.map(
+            (shortcut) =>
+              c.dim('  press ') +
+              c.bold(shortcut.key) +
+              c.dim(` to ${shortcut.description}`)
+          )
+        ].join('\n')
+      )
+    }
+
+    const shortcut = SHORTCUTS.find((shortcut) => shortcut.key === input)
+    if (!shortcut) return
+
+    actionRunning = true
+    await shortcut.action(server, restartServer)
+    actionRunning = false
+  }
+
+  process.stdin.setRawMode(true)
+
+  process.stdin.on('data', onInput).setEncoding('utf8').resume()
+
+  server.httpServer.on('close', () => {
+    process.stdin.off('data', onInput).pause()
+    process.stdin.setRawMode(false)
+  })
+}

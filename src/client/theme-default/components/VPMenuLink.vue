@@ -1,44 +1,73 @@
-<script lang="ts" setup>
+<script lang="ts" setup generic="T extends DefaultTheme.NavItemWithLink">
 import type { DefaultTheme } from 'vitepress/theme'
-import { useData } from '../composables/data'
-import { isActive } from '../../shared'
+import { inject } from 'vue'
+
+import {
+  navInjectionKey,
+  navScreenInjectionKey,
+  useNavItemLink
+} from '../composables/nav'
 import VPLink from './VPLink.vue'
 
-defineProps<{
-  item: DefaultTheme.NavItemWithLink
+const props = defineProps<{
+  item: T
+  rel?: string
 }>()
 
-const { page } = useData()
+const { href, isActiveLink, isCurrentLink } = useNavItemLink(() => props.item)
+
+const screen = inject(navScreenInjectionKey, false)
+const nav = inject(navInjectionKey, null)
+
+function onClick() {
+  if (screen) nav?.closeScreen()
+}
+
+defineOptions({ inheritAttrs: false })
 </script>
 
 <template>
-  <div class="VPMenuLink">
+  <li class="VPMenuLink">
     <VPLink
-      :class="{ active: isActive(page.relativePath, item.activeMatch || item.link, !!item.activeMatch) }"
-      :href="item.link"
+      v-bind="$attrs"
+      :class="{
+        active: isActiveLink,
+        VPNavScreenMenuGroupLink: screen
+      }"
+      :aria-current="isCurrentLink ? 'page' : undefined"
+      :href
       :target="item.target"
-      :rel="item.rel"
+      :rel="props.rel ?? item.rel"
+      :no-icon="item.noIcon"
+      @click="onClick"
     >
-      {{ item.text }}
+      <span dir="auto" v-html="item.text"></span>
     </VPLink>
-  </div>
+  </li>
 </template>
 
 <style scoped>
 .VPMenuGroup + .VPMenuLink {
-  margin: 12px -12px 0;
+  margin: 0.75rem -0.75rem 0;
   border-top: 1px solid var(--vp-c-divider);
-  padding: 12px 12px 0;
+  padding: 0.75rem 0.75rem 0;
+}
+
+.VPMenuGroup .VPMenuGroup + .VPMenuLink {
+  margin: 0;
+  border-top: 0;
+  padding: 0.5rem 0 0;
 }
 
 .link {
   display: block;
-  border-radius: 6px;
-  padding: 0 12px;
-  line-height: 32px;
-  font-size: 14px;
+  border-radius: 0.375rem;
+  padding: 0 0.75rem;
+  line-height: 2.2857143;
+  font-size: 0.875rem;
   font-weight: 500;
   color: var(--vp-c-text-1);
+  text-align: start;
   white-space: nowrap;
   transition: background-color 0.25s, color 0.25s;
 }
@@ -50,5 +79,24 @@ const { page } = useData()
 
 .link.active {
   color: var(--vp-c-brand-1);
+}
+
+.VPNavScreen .VPMenuLink {
+  margin: 0;
+  border: none;
+  padding: 0;
+}
+
+.VPNavScreen .link {
+  display: block;
+  margin-inline-start: 0.75rem;
+  border-radius: 0;
+  padding: 0;
+  font-weight: 400;
+  white-space: normal;
+}
+
+.VPNavScreen .link:hover {
+  background-color: transparent;
 }
 </style>

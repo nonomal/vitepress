@@ -7,7 +7,8 @@ export function useCodeGroups() {
         Array.from(el.children).forEach((child) => {
           child.classList.remove('active')
         })
-        el.children[0].classList.add('active')
+        const first = el.children[0]
+        if (first) activate(first)
       })
     })
   }
@@ -36,11 +37,18 @@ export function useCodeGroups() {
         if (!next || current === next) return
 
         current.classList.remove('active')
-        next.classList.add('active')
+        activate(next)
 
         const label = group?.querySelector(`label[for="${el.id}"]`)
         label?.scrollIntoView({ block: 'nearest' })
       }
     })
   }
+}
+
+function activate(el: Element): void {
+  el.classList.add('active')
+  window.dispatchEvent(
+    new CustomEvent('vitepress:codeGroupTabActivate', { detail: el })
+  )
 }

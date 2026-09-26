@@ -1,11 +1,14 @@
 import type { DefaultTheme } from 'vitepress/theme'
+
+import { isActive, isExternal } from '../../shared'
 import { ensureStartingSlash } from './utils'
-import { isActive } from '../../shared'
 
 export interface SidebarLink {
   text: string
   link: string
   docFooterText?: string
+  rel?: string
+  target?: string
 }
 
 type SidebarItem = DefaultTheme.SidebarItem
@@ -34,7 +37,7 @@ export function getSidebar(
       return path.startsWith(ensureStartingSlash(dir))
     })
 
-  const sidebar = dir ? _sidebar[dir] : []
+  const sidebar = dir ? (_sidebar[dir] ?? []) : []
   return Array.isArray(sidebar)
     ? addBase(sidebar)
     : addBase(sidebar.items, sidebar.base)
@@ -48,19 +51,20 @@ export function getSidebarGroups(sidebar: SidebarItem[]): SidebarItem[] {
 
   let lastGroupIndex: number = 0
 
-  for (const index in sidebar) {
-    const item = sidebar[index]
-
+  for (const item of sidebar) {
     if (item.items) {
       lastGroupIndex = groups.push(item)
       continue
     }
 
-    if (!groups[lastGroupIndex]) {
-      groups.push({ items: [] })
+    let group = groups[lastGroupIndex]
+
+    if (!group) {
+      group = { items: [] }
+      groups.push(group)
     }
 
-    groups[lastGroupIndex]!.items!.push(item)
+    group.items?.push(item)
   }
 
   return groups
@@ -75,7 +79,9 @@ export function getFlatSideBarLinks(sidebar: SidebarItem[]): SidebarLink[] {
         links.push({
           text: item.text,
           link: item.link,
-          docFooterText: item.docFooterText
+          docFooterText: item.docFooterText,
+          rel: item.rel,
+          target: item.target
         })
       }
 
@@ -95,24 +101,28 @@ export function getFlatSideBarLinks(sidebar: SidebarItem[]): SidebarLink[] {
  */
 export function hasActiveLink(
   path: string,
-  items: SidebarItem | SidebarItem[]
+  hash: string,
+  items: SidebarItem | SidebarItem[],
+  skipHashCheck = false
 ): boolean {
   if (Array.isArray(items)) {
-    return items.some((item) => hasActiveLink(path, item))
+    return items.some((item) => hasActiveLink(path, hash, item, skipHashCheck))
   }
-
-  return isActive(path, items.link)
-    ? true
-    : items.items
-      ? hasActiveLink(path, items.items)
-      : false
+  if (items.link && isActive(path, hash, items.link, false, skipHashCheck)) {
+    return true
+  }
+  if (items.items) {
+    return hasActiveLink(path, hash, items.items, skipHashCheck)
+  }
+  return false
 }
 
 function addBase(items: SidebarItem[], _base?: string): SidebarItem[] {
   return [...items].map((_item) => {
     const item = { ..._item }
     const base = item.base || _base
-    if (base && item.link) item.link = base + item.link
+    if (base && item.link && !isExternal(item.link))
+      item.link = base + item.link.replace(/^\//, base.endsWith('/') ? '' : '/')
     if (item.items) item.items = addBase(item.items, base)
     return item
   })

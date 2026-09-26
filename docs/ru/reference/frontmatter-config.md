@@ -1,4 +1,5 @@
 ---
+description: Справочник по всем доступным параметрам конфигурации метаданных для Markdown-страниц VitePress.
 outline: deep
 ---
 
@@ -21,7 +22,7 @@ editLink: true
 {{ $frontmatter.title }}
 ```
 
-## title {#title}
+## title
 
 - Тип: `string`
 
@@ -33,7 +34,7 @@ title: VitePress
 ---
 ```
 
-## titleTemplate {#titletemplate}
+## titleTemplate
 
 - Тип: `string | boolean`
 
@@ -46,7 +47,7 @@ titleTemplate: Генератор статических сайтов на ос�
 ---
 ```
 
-## description {#description}
+## description
 
 - Тип: `string`
 
@@ -58,11 +59,11 @@ description: VitePress
 ---
 ```
 
-## head {#head}
+## head
 
 - Тип: `HeadConfig[]`
 
-Укажите дополнительные теги, которые будут выводиться для текущей страницы. Они будут добавляться после других тегов внутри блока head, введённых в конфигурации сайта.
+Укажите дополнительные теги, которые будут выводиться для текущей страницы. Они [объединяются](./site-config#head) с тегами head, добавленными в конфигурации сайта.
 
 ```yaml
 ---
@@ -86,7 +87,7 @@ type HeadConfig =
 
 Следующие параметры метаданных применимы только при использовании темы по умолчанию.
 
-### layout {#layout}
+### layout
 
 - Тип: `doc | home | page`
 - По умолчанию: `doc`
@@ -103,15 +104,15 @@ layout: doc
 ---
 ```
 
-### hero <Badge type="info" text="только для страниц с макетом home" /> {#hero}
+### hero <Badge type="info" text="только для страниц с макетом home" />
 
 Определяет содержимое секции `hero`, когда `layout` имеет значение `home`. Подробнее в главе [Тема по умолчанию: Главная страница](./default-theme-home-page).
 
-### features <Badge type="info" text="только для страниц с макетом home" /> {#features}
+### features <Badge type="info" text="только для страниц с макетом home" />
 
 Определяет элементы для отображения в секции `features`, когда `layout` имеет значение `home`. Подробнее в главе [Тема по умолчанию: Главная страница](./default-theme-home-page).
 
-### navbar {#navbar}
+### navbar
 
 - Тип: `boolean`
 - По умолчанию: `true`
@@ -124,7 +125,7 @@ navbar: false
 ---
 ```
 
-### sidebar {#sidebar}
+### sidebar
 
 - Тип: `boolean`
 - По умолчанию: `true`
@@ -137,7 +138,7 @@ sidebar: false
 ---
 ```
 
-### aside {#aside}
+### aside
 
 - Тип: `boolean | 'left'`
 - По умолчанию: `true`
@@ -154,19 +155,25 @@ aside: false
 ---
 ```
 
-### outline {#outline}
+### outline
 
 - Тип: `number | [number, number] | 'deep' | false`
 - По умолчанию: `2`
 
 Уровни заголовков в оглавлении для отображения на странице. Это то же самое, что и [config.themeConfig.outline.level](./default-theme-config#outline), и оно переопределяет значение, установленное в конфигурации сайта.
 
-### lastUpdated {#lastupdated}
+```yaml
+---
+outline: [2, 4]
+---
+```
+
+### lastUpdated
 
 - Тип: `boolean | Date`
 - По умолчанию: `true`
 
-Отображать ли текст [Обновлено](./default-theme-last-updated) в нижнем колонтитуле текущей страницы. Если указано время даты, оно будет отображаться вместо временной метки последнего изменения git.
+Отображать ли текст [Обновлено](./default-theme-last-updated) в футере текущей страницы. Если указано время даты, оно будет отображаться вместо временной метки последнего изменения git.
 
 ```yaml
 ---
@@ -174,12 +181,12 @@ lastUpdated: false
 ---
 ```
 
-### editLink {#editlink}
+### editLink
 
 - Тип: `boolean`
 - По умолчанию: `true`
 
-Отображать ли [ссылку для редактирования](./default-theme-edit-link) в нижнем колонтитуле текущей страницы.
+Отображать ли [ссылку для редактирования](./default-theme-edit-link) в футере текущей страницы.
 
 ```yaml
 ---
@@ -187,12 +194,12 @@ editLink: false
 ---
 ```
 
-### footer {#footer}
+### footer
 
 - Тип: `boolean`
 - По умолчанию: `true`
 
-Отображать ли [подвал](./default-theme-footer).
+Отображать ли [футер](./default-theme-footer).
 
 ```yaml
 ---
@@ -200,7 +207,7 @@ footer: false
 ---
 ```
 
-### pageClass {#pageclass}
+### pageClass
 
 - Тип: `string`
 
@@ -216,6 +223,19 @@ pageClass: custom-page-class
 
 ```css
 .custom-page-class {
-  /* стили для конкретной страницы */
+  /* стили для конкретной страницы */
 }
+```
+
+### isHome
+
+- Тип: `boolean`
+
+Стандартная тема полагается на проверки типа `frontmatter.layout === 'home'`, чтобы определить, является ли текущая страница домашней (главной).\
+Это полезно, когда вы хотите принудительно показывать элементы домашней страницы в пользовательском макете.
+
+```yaml
+---
+isHome: true
+---
 ```

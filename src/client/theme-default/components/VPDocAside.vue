@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useData } from '../composables/data'
-import VPDocAsideOutline from './VPDocAsideOutline.vue'
 import VPDocAsideCarbonAds from './VPDocAsideCarbonAds.vue'
+import VPDocAsideOutline from './VPDocAsideOutline.vue'
 
 const { theme } = useData()
 </script>
@@ -37,10 +37,10 @@ const { theme } = useData()
 
 .VPDocAside :deep(.spacer + .VPDocAsideSponsors),
 .VPDocAside :deep(.spacer + .VPDocAsideCarbonAds) {
-  margin-top: 24px;
+  margin-top: 1.5rem;
 }
 
 .VPDocAside :deep(.VPDocAsideSponsors + .VPDocAsideCarbonAds) {
-  margin-top: 16px;
+  margin-top: 1rem;
 }
 </style>

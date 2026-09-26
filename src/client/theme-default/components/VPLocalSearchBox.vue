@@ -2,17 +2,16 @@
 import localSearchIndex from '@localSearchIndex'
 import {
   computedAsync,
-  debouncedWatch,
+  watchDebounced,
   onKeyStroke,
   useEventListener,
   useLocalStorage,
-  useScrollLock,
   useSessionStorage
 } from '@vueuse/core'
 import { useFocusTrap } from '@vueuse/integrations/useFocusTrap'
 import Mark from 'mark.js/src/vanilla.js'
 import MiniSearch, { type SearchResult } from 'minisearch'
-import { dataSymbol, inBrowser, useRouter } from 'vitepress'
+import { dataSymbol, useRouter, withBase } from 'vitepress'
 import {
   computed,
   createApp,
@@ -22,14 +21,17 @@ import {
   onMounted,
   ref,
   shallowRef,
+  useTemplateRef,
   watch,
   watchEffect,
   type Ref
 } from 'vue'
-import type { ModalTranslations } from '../../../../types/local-search'
+
+import type { LocalSearchTranslations } from '../../../../types/local-search'
 import { pathToFile } from '../../app/utils'
 import { escapeRegExp } from '../../shared'
 import { useData } from '../composables/data'
+import { useBodyScrollLock } from '../composables/scroll-lock'
 import { LRUCache } from '../support/lru'
 import { createSearchTranslate } from '../support/translation'
 
@@ -37,8 +39,8 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-const el = shallowRef<HTMLElement>()
-const resultsEl = shallowRef<HTMLElement>()
+const el = useTemplateRef('el')
+const resultsEl = useTemplateRef('resultsEl')
 
 /* Search */
 
@@ -46,7 +48,7 @@ const searchIndexData = shallowRef(localSearchIndex)
 
 // hmr
 if (import.meta.hot) {
-  import.meta.hot.accept('/@localSearchIndex', (m) => {
+  import.meta.hot.accept('@localSearchIndex', (m) => {
     if (m) {
       searchIndexData.value = m.default
     }
@@ -67,11 +69,18 @@ const { activate } = useFocusTrap(el, {
   escapeDeactivates: true
 })
 const { localeIndex, theme } = vitePressData
-const searchIndex = computedAsync(async () =>
-  markRaw(
-    MiniSearch.loadJSON<Result>(
-      (await searchIndexData.value[localeIndex.value]?.())?.default,
-      {
+const isSearchIndexLoading = ref(false)
+const isSearching = ref(false)
+const showSearchSpinner = computed(() => {
+  return isSearchIndexLoading.value || isSearching.value
+})
+
+const searchIndex = computedAsync(
+  async () => {
+    const json = (await searchIndexData.value[localeIndex.value]?.())?.default
+    if (!json) return null
+    return markRaw(
+      MiniSearch.loadJSON<Result>(json, {
         fields: ['title', 'titles', 'text'],
         storeFields: ['title', 'titles'],
         searchOptions: {
@@ -83,9 +92,11 @@ const searchIndex = computedAsync(async () =>
         },
         ...(theme.value.search?.provider === 'local' &&
           theme.value.search.options?.miniSearch?.options)
-      }
+      })
     )
-  )
+  },
+  undefined,
+  isSearchIndexLoading
 )
 
 const disableQueryPersistence = computed(() => {
@@ -108,18 +119,7 @@ const showDetailedList = useLocalStorage(
 const disableDetailedView = computed(() => {
   return (
     theme.value.search?.provider === 'local' &&
-    (theme.value.search.options?.disableDetailedView === true ||
-      theme.value.search.options?.detailedView === false)
-  )
-})
-
-const buttonText = computed(() => {
-  const options = theme.value.search?.options ?? theme.value.algolia
-
-  return (
-    options?.locales?.[localeIndex.value]?.translations?.button?.buttonText ||
-    options?.translations?.button?.buttonText ||
-    'Search'
+    theme.value.search.options?.detailedView === false
   )
 })
 
@@ -144,7 +144,7 @@ const mark = computedAsync(async () => {
 
 const cache = new LRUCache<string, Map<string, string>>(16) // 16 files
 
-debouncedWatch(
+watchDebounced(
   () => [searchIndex.value, filterText.value, showDetailedList.value] as const,
   async ([index, filterTextValue, showDetailedListValue], old, onCleanup) => {
     if (old?.[0] !== index) {
@@ -155,9 +155,15 @@ debouncedWatch(
     let canceled = false
     onCleanup(() => {
       canceled = true
+      isSearching.value = false
     })
 
-    if (!index) return
+    if (!index) {
+      results.value = []
+      return
+    }
+
+    isSearching.value = true
 
     // Search
     results.value = index
@@ -171,7 +177,7 @@ debouncedWatch(
       : []
     if (canceled) return
     for (const { id, mod } of mods) {
-      const mapId = id.slice(0, id.indexOf('#'))
+      const mapId = id.replace(/#.*$/, '')
       let map = cache.get(mapId)
       if (map) continue
       map = new Map()
@@ -242,12 +248,13 @@ debouncedWatch(
     }
     // FIXME: without this whole page scrolls to the bottom
     resultsEl.value?.firstElementChild?.scrollIntoView({ block: 'start' })
+    isSearching.value = false
   },
   { debounce: 200, immediate: true }
 )
 
 async function fetchExcerpt(id: string) {
-  const file = pathToFile(id.slice(0, id.indexOf('#')))
+  const file = pathToFile(withBase(id.replace(/#.*$/, '')))
   try {
     if (!file) throw new Error(`Cannot find file for id: ${id}`)
     return { id, mod: await import(/*@vite-ignore*/ file) }
@@ -259,7 +266,7 @@ async function fetchExcerpt(id: string) {
 
 /* Search input focus */
 
-const searchInput = ref<HTMLInputElement>()
+const searchInput = useTemplateRef('searchInput')
 const disableReset = computed(() => {
   return filterText.value?.length <= 0
 })
@@ -281,7 +288,7 @@ function onSearchBarClick(event: PointerEvent) {
 /* Search keyboard selection */
 
 const selectedIndex = ref(-1)
-const disableMouseOver = ref(false)
+const disableMouseOver = ref(true)
 
 watch(results, (r) => {
   selectedIndex.value = r.length ? 0 : -1
@@ -291,15 +298,11 @@ watch(results, (r) => {
 function scrollToSelectedResult() {
   nextTick(() => {
     const selectedEl = document.querySelector('.result.selected')
-    if (selectedEl) {
-      selectedEl.scrollIntoView({
-        block: 'nearest'
-      })
-    }
+    selectedEl?.scrollIntoView({ block: 'nearest' })
   })
 }
 
-onKeyStroke('ArrowUp', (event) => {
+function selectPreviousResult(event: KeyboardEvent) {
   event.preventDefault()
   selectedIndex.value--
   if (selectedIndex.value < 0) {
@@ -307,9 +310,9 @@ onKeyStroke('ArrowUp', (event) => {
   }
   disableMouseOver.value = true
   scrollToSelectedResult()
-})
+}
 
-onKeyStroke('ArrowDown', (event) => {
+function selectNextResult(event: KeyboardEvent) {
   event.preventDefault()
   selectedIndex.value++
   if (selectedIndex.value >= results.value.length) {
@@ -317,6 +320,32 @@ onKeyStroke('ArrowDown', (event) => {
   }
   disableMouseOver.value = true
   scrollToSelectedResult()
+}
+
+function isMacCtrlShortcut(event: KeyboardEvent) {
+  return (
+    event.ctrlKey &&
+    !event.altKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    document.documentElement.classList.contains('mac')
+  )
+}
+
+onKeyStroke('ArrowUp', selectPreviousResult)
+
+onKeyStroke('ArrowDown', selectNextResult)
+
+onKeyStroke(['p', 'P'], (event) => {
+  if (isMacCtrlShortcut(event)) {
+    selectPreviousResult(event)
+  }
+})
+
+onKeyStroke(['n', 'N'], (event) => {
+  if (isMacCtrlShortcut(event)) {
+    selectNextResult(event)
+  }
 })
 
 const router = useRouter()
@@ -334,7 +363,7 @@ onKeyStroke('Enter', (e) => {
   }
 
   if (selectedPackage) {
-    router.go(selectedPackage.id)
+    router.go(withBase(selectedPackage.id))
     emit('close')
   }
 })
@@ -343,8 +372,12 @@ onKeyStroke('Escape', () => {
   emit('close')
 })
 
-// Translations
-const defaultTranslations: { modal: ModalTranslations } = {
+/* Translations */
+
+const defaultTranslations: LocalSearchTranslations = {
+  button: {
+    buttonText: 'Search'
+  },
   modal: {
     displayDetails: 'Display detailed list',
     resetButtonTitle: 'Reset search',
@@ -364,7 +397,7 @@ const defaultTranslations: { modal: ModalTranslations } = {
 
 const translate = createSearchTranslate(defaultTranslations)
 
-// Back
+/* Back */
 
 onMounted(() => {
   // Prevents going to previous site
@@ -377,7 +410,8 @@ useEventListener('popstate', (event) => {
 })
 
 /** Lock body */
-const isLocked = useScrollLock(inBrowser ? document.body : null)
+
+const isLocked = useBodyScrollLock()
 
 onMounted(() => {
   nextTick(() => {
@@ -404,6 +438,16 @@ function formMarkRegex(terms: Set<string>) {
     'gi'
   )
 }
+
+function onMouseMove(e: MouseEvent) {
+  if (!disableMouseOver.value) return
+  const el = (e.target as HTMLElement)?.closest<HTMLAnchorElement>('.result')
+  const index = Number.parseInt(el?.dataset.index!)
+  if (index >= 0 && index !== selectedIndex.value) {
+    selectedIndex.value = index
+  }
+  disableMouseOver.value = false
+}
 </script>
 
 <template>
@@ -426,7 +470,7 @@ function formMarkRegex(terms: Set<string>) {
           @submit.prevent=""
         >
           <label
-            :title="buttonText"
+            :title="translate('button.buttonText')"
             id="localsearch-label"
             for="localsearch-input"
           >
@@ -444,12 +488,30 @@ function formMarkRegex(terms: Set<string>) {
           <input
             ref="searchInput"
             v-model="filterText"
-            :placeholder="buttonText"
-            id="localsearch-input"
+            :aria-activedescendant="selectedIndex > -1 ? 'localsearch-item-' + selectedIndex : undefined"
+            aria-autocomplete="both"
+            :aria-controls="results?.length ? 'localsearch-list' : undefined"
             aria-labelledby="localsearch-label"
+            autocapitalize="off"
+            autocomplete="off"
+            autocorrect="off"
             class="search-input"
+            id="localsearch-input"
+            enterkeyhint="go"
+            maxlength="64"
+            :placeholder="translate('button.buttonText')"
+            spellcheck="false"
+            type="search"
           />
           <div class="search-actions">
+            <span
+              class="search-loading"
+              :class="{ active: showSearchSpinner }"
+              :role="showSearchSpinner ? 'status' : undefined"
+              aria-live="polite"
+              :aria-label="showSearchSpinner ? 'Loading search results' : undefined"
+            />
+
             <button
               v-if="!disableDetailedView"
               class="toggle-layout-button"
@@ -479,18 +541,20 @@ function formMarkRegex(terms: Set<string>) {
           ref="resultsEl"
           :id="results?.length ? 'localsearch-list' : undefined"
           :role="results?.length ? 'listbox' : undefined"
+          :aria-busy="showSearchSpinner ? 'true' : 'false'"
           :aria-labelledby="results?.length ? 'localsearch-label' : undefined"
           class="results"
-          @mousemove="disableMouseOver = false"
+          @mousemove="onMouseMove"
         >
           <li
             v-for="(p, index) in results"
             :key="p.id"
-            role="option"
+            :id="'localsearch-item-' + index"
             :aria-selected="selectedIndex === index ? 'true' : 'false'"
+            role="option"
           >
             <a
-              :href="p.id"
+              :href="withBase(p.id)"
               class="result"
               :class="{
                 selected: selectedIndex === index
@@ -499,6 +563,7 @@ function formMarkRegex(terms: Set<string>) {
               @mouseenter="!disableMouseOver && (selectedIndex = index)"
               @focusin="selectedIndex = index"
               @click="$emit('close')"
+              :data-index="index"
             >
               <div>
                 <div class="titles">
@@ -508,11 +573,11 @@ function formMarkRegex(terms: Set<string>) {
                     :key="index"
                     class="title"
                   >
-                    <span class="text" v-html="t" />
+                    <span class="text" dir="auto" v-html="t" />
                     <span class="vpi-chevron-right local-search-icon" />
                   </span>
                   <span class="title main">
-                    <span class="text" v-html="p.title" />
+                    <span class="text" dir="auto" v-html="p.title" />
                   </span>
                 </div>
 
@@ -530,8 +595,7 @@ function formMarkRegex(terms: Set<string>) {
             v-if="filterText && !results.length && enableNoResults"
             class="no-results"
           >
-            {{ translate('modal.noResultsText') }} "<strong>{{ filterText }}</strong
-            >"
+            {{ translate('modal.noResultsText') }} "<strong>{{ filterText }}</strong>"
           </li>
         </ul>
 
@@ -578,19 +642,19 @@ function formMarkRegex(terms: Set<string>) {
 
 .shell {
   position: relative;
-  padding: 12px;
-  margin: 64px auto;
+  padding: 0.75rem;
+  margin: 4rem auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 1rem;
   background: var(--vp-local-search-bg);
-  width: min(100vw - 60px, 900px);
+  width: min(100vw - 3.75rem, 56.25rem);
   height: min-content;
-  max-height: min(100vh - 128px, 900px);
-  border-radius: 6px;
+  max-height: min(100vh - 8rem, 56.25rem);
+  border-radius: 0.375rem;
 }
 
-@media (max-width: 767px) {
+@media not all and (min-width: 48rem) {
   .shell {
     margin: 0;
     width: 100vw;
@@ -602,16 +666,16 @@ function formMarkRegex(terms: Set<string>) {
 
 .search-bar {
   border: 1px solid var(--vp-c-divider);
-  border-radius: 4px;
+  border-radius: 0.25rem;
   display: flex;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 0.75rem;
   cursor: text;
 }
 
-@media (max-width: 767px) {
+@media not all and (min-width: 48rem) {
   .search-bar {
-    padding: 0 8px;
+    padding: 0 0.5rem;
   }
 }
 
@@ -621,55 +685,59 @@ function formMarkRegex(terms: Set<string>) {
 
 .local-search-icon {
   display: block;
-  font-size: 18px;
+  font-size: 1.125rem;
 }
 
 .navigate-icon {
   display: block;
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 .search-icon {
-  margin: 8px;
+  margin: 0.5rem;
 }
 
-@media (max-width: 767px) {
+@media not all and (min-width: 48rem) {
   .search-icon {
     display: none;
   }
 }
 
 .search-input {
-  padding: 6px 12px;
+  padding: 0.375rem 0.75rem;
   font-size: inherit;
   width: 100%;
 }
 
-@media (max-width: 767px) {
+.search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+@media not all and (min-width: 48rem) {
   .search-input {
-    padding: 6px 4px;
+    padding: 0.375rem 0.25rem;
   }
 }
 
 .search-actions {
   display: flex;
-  gap: 4px;
+  gap: 0.25rem;
 }
 
 @media (any-pointer: coarse) {
   .search-actions {
-    gap: 8px;
+    gap: 0.5rem;
   }
 }
 
-@media (min-width: 769px) {
+@media (min-width: 48rem) {
   .search-actions.before {
     display: none;
   }
 }
 
 .search-actions button {
-  padding: 8px;
+  padding: 0.5rem;
 }
 
 .search-actions button:not([disabled]):hover,
@@ -681,22 +749,50 @@ function formMarkRegex(terms: Set<string>) {
   opacity: 0.37;
 }
 
+.search-loading {
+  visibility: hidden;
+  margin: 0.5rem;
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: none;
+  border: 2px solid var(--vp-c-divider);
+  border-top-color: var(--vp-c-brand-1);
+  border-radius: 50%;
+}
+
+.search-loading.active {
+  visibility: visible;
+  animation: local-search-loading 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-loading.active {
+    animation: none;
+  }
+}
+
+@keyframes local-search-loading {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .search-keyboard-shortcuts {
   font-size: 0.8rem;
   opacity: 75%;
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  line-height: 14px;
+  gap: 1rem;
+  line-height: 1.09375;
 }
 
 .search-keyboard-shortcuts span {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 0.25rem;
 }
 
-@media (max-width: 767px) {
+@media not all and (min-width: 48rem) {
   .search-keyboard-shortcuts {
     display: none;
   }
@@ -704,9 +800,9 @@ function formMarkRegex(terms: Set<string>) {
 
 .search-keyboard-shortcuts kbd {
   background: rgba(128, 128, 128, 0.1);
-  border-radius: 4px;
-  padding: 3px 6px;
-  min-width: 24px;
+  border-radius: 0.25rem;
+  padding: 0.1875rem 0.375rem;
+  min-width: 1.5rem;
   display: inline-block;
   text-align: center;
   vertical-align: middle;
@@ -717,7 +813,7 @@ function formMarkRegex(terms: Set<string>) {
 .results {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0.375rem;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -726,39 +822,39 @@ function formMarkRegex(terms: Set<string>) {
 .result {
   display: flex;
   align-items: center;
-  gap: 8px;
-  border-radius: 4px;
+  gap: 0.5rem;
+  border-radius: 0.25rem;
   transition: none;
-  line-height: 1rem;
+  line-height: 1;
   border: solid 2px var(--vp-local-search-result-border);
   outline: none;
 }
 
 .result > div {
-  margin: 12px;
+  margin: 0.75rem;
   width: 100%;
   overflow: hidden;
 }
 
-@media (max-width: 767px) {
+@media not all and (min-width: 48rem) {
   .result > div {
-    margin: 8px;
+    margin: 0.5rem;
   }
 }
 
 .titles {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 0.25rem;
   position: relative;
   z-index: 1001;
-  padding: 2px 0;
+  padding: 0.125rem 0;
 }
 
 .title {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 0.25rem;
 }
 
 .title.main {
@@ -785,13 +881,12 @@ function formMarkRegex(terms: Set<string>) {
 }
 
 .excerpt {
-  opacity: 75%;
+  opacity: 50%;
   pointer-events: none;
-  max-height: 140px;
+  max-height: 8.75rem;
   overflow: hidden;
   position: relative;
-  opacity: 0.5;
-  margin-top: 4px;
+  margin-top: 0.25rem;
 }
 
 .result.selected .excerpt {
@@ -800,15 +895,15 @@ function formMarkRegex(terms: Set<string>) {
 
 .excerpt :deep(*) {
   font-size: 0.8rem !important;
-  line-height: 130% !important;
+  line-height: 1.3 !important;
 }
 
 .titles :deep(mark),
 .excerpt :deep(mark) {
   background-color: var(--vp-local-search-highlight-bg);
   color: var(--vp-local-search-highlight-text);
-  border-radius: 2px;
-  padding: 0 2px;
+  border-radius: 0.125rem;
+  padding: 0 0.125rem;
 }
 
 .excerpt :deep(.vp-code-group) .tabs {
@@ -816,15 +911,14 @@ function formMarkRegex(terms: Set<string>) {
 }
 
 .excerpt :deep(.vp-code-group) div[class*='language-'] {
-  border-radius: 8px !important;
+  border-radius: 0.5rem !important;
 }
 
 .excerpt-gradient-bottom {
   position: absolute;
   bottom: -1px;
-  left: 0;
-  width: 100%;
-  height: 8px;
+  inset-inline: 0;
+  height: 0.5rem;
   background: linear-gradient(transparent, var(--vp-local-search-result-bg));
   z-index: 1000;
 }
@@ -832,9 +926,8 @@ function formMarkRegex(terms: Set<string>) {
 .excerpt-gradient-top {
   position: absolute;
   top: -1px;
-  left: 0;
-  width: 100%;
-  height: 8px;
+  inset-inline: 0;
+  height: 0.5rem;
   background: linear-gradient(var(--vp-local-search-result-bg), transparent);
   z-index: 1000;
 }
@@ -847,7 +940,7 @@ function formMarkRegex(terms: Set<string>) {
 .no-results {
   font-size: 0.9rem;
   text-align: center;
-  padding: 12px;
+  padding: 0.75rem;
 }
 
 svg {

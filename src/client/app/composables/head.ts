@@ -1,11 +1,12 @@
 import { watchEffect, type Ref } from 'vue'
+
 import {
-  type HeadConfig,
-  type SiteData,
   createTitle,
-  mergeHead
+  mergeHead,
+  type HeadConfig,
+  type Route,
+  type SiteData
 } from '../../shared'
-import type { Route } from '../router'
 
 export function useUpdateHead(route: Route, siteDataByRouteRef: Ref<SiteData>) {
   let isFirstUpdate = true
@@ -81,13 +82,13 @@ export function useUpdateHead(route: Route, siteDataByRouteRef: Ref<SiteData>) {
 
 function createHeadElement([tag, attrs, innerHTML]: HeadConfig) {
   const el = document.createElement(tag)
-  for (const key in attrs) {
-    el.setAttribute(key, attrs[key])
+  for (const [key, value] of Object.entries(attrs)) {
+    el.setAttribute(key, value)
   }
   if (innerHTML) {
     el.innerHTML = innerHTML
   }
-  if (tag === 'script' && !attrs.async) {
+  if (tag === 'script' && attrs.async == null) {
     // async is true by default for dynamically created scripts
     ;(el as HTMLScriptElement).async = false
   }

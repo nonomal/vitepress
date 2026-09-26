@@ -1,31 +1,30 @@
-import { getScrollOffset } from 'vitepress'
+import { useMediaQuery } from '@vueuse/core'
 import type { DefaultTheme } from 'vitepress/theme'
-import { onMounted, onUnmounted, onUpdated, type Ref } from 'vue'
-import type { Header } from '../../shared'
+import { onMounted, onUnmounted, onUpdated, type TemplateRef } from 'vue'
+
 import { throttleAndDebounce } from '../support/utils'
-import { useAside } from './aside'
+
+const ignoreRE = /\b(?:VPBadge|header-anchor|footnote-ref|ignore-header)\b/
 
 // cached list of anchor elements from resolveHeaders
 const resolvedHeaders: { element: HTMLHeadElement; link: string }[] = []
 
-export type MenuItem = Omit<Header, 'slug' | 'children'> & {
-  element: HTMLHeadElement
-  children?: MenuItem[]
-}
-
-export function resolveTitle(theme: DefaultTheme.Config) {
+export function resolveTitle(theme: DefaultTheme.Config): string {
   return (
     (typeof theme.outline === 'object' &&
       !Array.isArray(theme.outline) &&
       theme.outline.label) ||
-    theme.outlineTitle ||
     'On this page'
   )
 }
 
-export function getHeaders(range: DefaultTheme.Config['outline']) {
+export function getHeaders(
+  range: DefaultTheme.Config['outline']
+): DefaultTheme.OutlineItem[] {
   const headers = [
-    ...document.querySelectorAll('.VPDoc :where(h1,h2,h3,h4,h5,h6)')
+    ...document.querySelectorAll(
+      '.VPDoc h1, .VPDoc h2, .VPDoc h3, .VPDoc h4, .VPDoc h5, .VPDoc h6'
+    )
   ]
     .filter((el) => el.id && el.hasChildNodes())
     .map((el) => {
@@ -45,13 +44,7 @@ function serializeHeader(h: Element): string {
   let ret = ''
   for (const node of h.childNodes) {
     if (node.nodeType === 1) {
-      if (
-        (node as Element).classList.contains('VPBadge') ||
-        (node as Element).classList.contains('header-anchor') ||
-        (node as Element).classList.contains('ignore-header')
-      ) {
-        continue
-      }
+      if (ignoreRE.test((node as Element).className)) continue
       ret += node.textContent
     } else if (node.nodeType === 3) {
       ret += node.textContent
@@ -61,9 +54,9 @@ function serializeHeader(h: Element): string {
 }
 
 export function resolveHeaders(
-  headers: MenuItem[],
+  headers: DefaultTheme.OutlineItem[],
   range?: DefaultTheme.Config['outline']
-): MenuItem[] {
+): DefaultTheme.OutlineItem[] {
   if (range === false) {
     return []
   }
@@ -80,47 +73,24 @@ export function resolveHeaders(
         ? [2, 6]
         : levelsRange
 
-  headers = headers.filter((h) => h.level >= high && h.level <= low)
-  // clear previous caches
-  resolvedHeaders.length = 0
-  // update global header list for active link rendering
-  for (const { element, link } of headers) {
-    resolvedHeaders.push({ element, link })
-  }
-
-  const ret: MenuItem[] = []
-  outer: for (let i = 0; i < headers.length; i++) {
-    const cur = headers[i]
-    if (i === 0) {
-      ret.push(cur)
-    } else {
-      for (let j = i - 1; j >= 0; j--) {
-        const prev = headers[j]
-        if (prev.level < cur.level) {
-          ;(prev.children || (prev.children = [])).push(cur)
-          continue outer
-        }
-      }
-      ret.push(cur)
-    }
-  }
-
-  return ret
+  return buildTree(headers, high, low)
 }
 
 export function useActiveAnchor(
-  container: Ref<HTMLElement>,
-  marker: Ref<HTMLElement>
-) {
-  const { isAsideEnabled } = useAside()
+  container: TemplateRef<HTMLElement>,
+  marker: TemplateRef<HTMLElement>
+): void {
+  const isAsideVisible = useMediaQuery('(min-width: 80rem)')
 
   const onScroll = throttleAndDebounce(setActiveLink, 100)
 
   let prevActiveLink: HTMLAnchorElement | null = null
+  let ignoreScrollOnce: boolean = false
 
   onMounted(() => {
     requestAnimationFrame(setActiveLink)
     window.addEventListener('scroll', onScroll)
+    container.value?.addEventListener('click', onClick)
   })
 
   onUpdated(() => {
@@ -132,21 +102,42 @@ export function useActiveAnchor(
     window.removeEventListener('scroll', onScroll)
   })
 
+  function onClick(e: MouseEvent) {
+    if (!isAsideVisible.value) {
+      return
+    }
+
+    const hash =
+      e.target instanceof Element ? e.target.closest('a')?.hash : null
+
+    if (hash) {
+      ignoreScrollOnce = true
+      activateLink(hash)
+    }
+  }
+
   function setActiveLink() {
-    if (!isAsideEnabled.value) {
+    if (!isAsideVisible.value) {
+      return
+    }
+
+    if (ignoreScrollOnce) {
+      ignoreScrollOnce = false
       return
     }
 
     const scrollY = window.scrollY
     const innerHeight = window.innerHeight
     const offsetHeight = document.body.offsetHeight
-    const isBottom = Math.abs(scrollY + innerHeight - offsetHeight) < 1
+    const isBottom = scrollY + innerHeight - offsetHeight >= 0
 
     // resolvedHeaders may be repositioned, hidden or fix positioned
     const headers = resolvedHeaders
       .map(({ element, link }) => ({
         link,
-        top: getAbsoluteTop(element)
+        top: getAbsoluteTop(element),
+        scrollMarginTop:
+          Number.parseFloat(getComputedStyle(element).scrollMarginTop) || 0
       }))
       .filter(({ top }) => !Number.isNaN(top))
       .sort((a, b) => a.top - b.top)
@@ -165,14 +156,14 @@ export function useActiveAnchor(
 
     // page bottom - highlight last link
     if (isBottom) {
-      activateLink(headers[headers.length - 1].link)
+      activateLink(headers.at(-1)?.link ?? null)
       return
     }
 
     // find the last header above the top of viewport
     let activeLink: string | null = null
-    for (const { link, top } of headers) {
-      if (top > scrollY + getScrollOffset() + 4) {
+    for (const { link, top, scrollMarginTop } of headers) {
+      if (top > scrollY + scrollMarginTop + 4) {
         break
       }
       activeLink = link
@@ -181,26 +172,33 @@ export function useActiveAnchor(
   }
 
   function activateLink(hash: string | null) {
-    if (prevActiveLink) {
-      prevActiveLink.classList.remove('active')
-    }
+    const activeLink =
+      hash != null
+        ? (container.value?.querySelector<HTMLAnchorElement>(
+            `a[href$="${decodeURIComponent(hash)}"]`
+          ) ?? null)
+        : null
 
-    if (hash == null) {
-      prevActiveLink = null
-    } else {
-      prevActiveLink = container.value.querySelector(
-        `a[href="${decodeURIComponent(hash)}"]`
-      )
-    }
+    if (activeLink === prevActiveLink) return
 
-    const activeLink = prevActiveLink
+    prevActiveLink?.classList.remove('active')
+    prevActiveLink = activeLink
 
     if (activeLink) {
       activeLink.classList.add('active')
-      marker.value.style.top = activeLink.offsetTop + 39 + 'px'
-      marker.value.style.opacity = '1'
-    } else {
-      marker.value.style.top = '33px'
+      if (marker.value) {
+        // the links' offsetParent (.root) sits below the outline title while
+        // the marker is offset from .content, so re-align their origins
+        marker.value.style.top =
+          activeLink.offsetTop +
+          ((activeLink.offsetParent as HTMLElement)?.offsetTop ?? 0) +
+          (activeLink.offsetHeight - marker.value.offsetHeight) / 2 +
+          'px'
+        marker.value.style.opacity = '1'
+      }
+      activeLink.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    } else if (marker.value) {
+      marker.value.style.top = ''
       marker.value.style.opacity = '0'
     }
   }
@@ -220,4 +218,45 @@ function getAbsoluteTop(element: HTMLElement): number {
     element = element.offsetParent as HTMLElement
   }
   return offsetTop
+}
+
+function buildTree(
+  data: DefaultTheme.OutlineItem[],
+  min: number,
+  max: number
+): DefaultTheme.OutlineItem[] {
+  resolvedHeaders.length = 0
+
+  const result: DefaultTheme.OutlineItem[] = []
+  const stack: (
+    DefaultTheme.OutlineItem | { level: number; shouldIgnore: true }
+  )[] = []
+
+  data.forEach((item) => {
+    const node = { ...item, children: [] }
+    let parent = stack[stack.length - 1]
+
+    while (parent && parent.level >= node.level) {
+      stack.pop()
+      parent = stack[stack.length - 1]
+    }
+
+    if (
+      node.element.classList.contains('ignore-header') ||
+      (parent && 'shouldIgnore' in parent)
+    ) {
+      stack.push({ level: node.level, shouldIgnore: true })
+      return
+    }
+
+    if (node.level > max || node.level < min) return
+    resolvedHeaders.push({ element: node.element, link: node.link })
+
+    if (parent) parent.children!.push(node)
+    else result.push(node)
+
+    stack.push(node)
+  })
+
+  return result
 }

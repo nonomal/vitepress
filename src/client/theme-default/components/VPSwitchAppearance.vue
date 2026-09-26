@@ -1,5 +1,6 @@
 <script lang="ts" setup>
-import { inject, computed } from 'vue'
+import { inject, ref, watchPostEffect } from 'vue'
+
 import { useData } from '../composables/data'
 import VPSwitch from './VPSwitch.vue'
 
@@ -9,22 +10,26 @@ const toggleAppearance = inject('toggle-appearance', () => {
   isDark.value = !isDark.value
 })
 
-const switchTitle = computed(() => {
-  return isDark.value
+const switchTitle = ref('')
+
+watchPostEffect(() => {
+  switchTitle.value = isDark.value
     ? theme.value.lightModeSwitchTitle || 'Switch to light theme'
     : theme.value.darkModeSwitchTitle || 'Switch to dark theme'
 })
 </script>
 
 <template>
+  <!-- stable name + aria-checked state; the title stays the action hint -->
   <VPSwitch
     :title="switchTitle"
     class="VPSwitchAppearance"
+    :aria-label="theme.darkModeSwitchLabel || 'Appearance'"
     :aria-checked="isDark"
     @click="toggleAppearance"
   >
-    <span class="vpi-sun sun" />
-    <span class="vpi-moon moon" />
+    <span class="vpi-sun sun" aria-hidden="true" />
+    <span class="vpi-moon moon" aria-hidden="true" />
   </VPSwitch>
 </template>
 
@@ -46,7 +51,6 @@ const switchTitle = computed(() => {
 }
 
 .dark .VPSwitchAppearance :deep(.check) {
-  /*rtl:ignore*/
-  transform: translateX(18px);
+  transform: translateX(calc(1.125rem * var(--vp-direction-multiplier)));
 }
 </style>

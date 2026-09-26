@@ -1,4 +1,5 @@
-import { build, type Rollup } from 'vite'
+import { build, type Rolldown } from 'vite'
+
 import type { SiteConfig } from '..'
 
 const virtualEntry = 'client.js'
@@ -6,7 +7,7 @@ const virtualEntry = 'client.js'
 export async function buildMPAClient(
   js: Record<string, string>,
   config: SiteConfig
-): Promise<Rollup.RollupOutput> {
+): Promise<Rolldown.RolldownOutput> {
   const files = Object.keys(js)
   const themeFiles = files.filter((f) => !f.endsWith('.md'))
   const pages = files.filter((f) => f.endsWith('.md'))
@@ -16,10 +17,18 @@ export async function buildMPAClient(
     cacheDir: config.cacheDir,
     base: config.site.base,
     logLevel: config.vite?.logLevel ?? 'warn',
+    ...(config.assetsBase
+      ? {
+          experimental: {
+            renderBuiltUrl: (filename, ctx) =>
+              ctx.type === 'asset' ? config.assetsBase! + filename : undefined
+          }
+        }
+      : {}),
     build: {
       emptyOutDir: false,
       outDir: config.outDir,
-      rollupOptions: {
+      rolldownOptions: {
         input: [virtualEntry, ...pages]
       }
     },
@@ -42,5 +51,5 @@ export async function buildMPAClient(
         }
       }
     ]
-  }) as Promise<Rollup.RollupOutput>
+  }) as Promise<Rolldown.RolldownOutput>
 }

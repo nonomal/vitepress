@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { useTemplateRef } from 'vue'
+
 import type { GridSize } from '../composables/sponsor-grid'
-import { ref } from 'vue'
 import { useSponsorsGrid } from '../composables/sponsor-grid'
 
 export interface Sponsor {
@@ -16,14 +17,14 @@ const props = withDefaults(defineProps<Props>(), {
   size: 'medium'
 })
 
-const el = ref(null)
+const el = useTemplateRef('el')
 
 useSponsorsGrid({ el, size: props.size })
 </script>
 
 <template>
-  <div class="VPSponsorsGrid vp-sponsor-grid" :class="[size]" ref="el">
-    <div
+  <ul class="VPSponsorsGrid vp-sponsor-grid" :class="[size]" ref="el">
+    <li
       v-for="sponsor in data"
       :key="sponsor.name"
       class="vp-sponsor-grid-item"
@@ -35,7 +36,6 @@ useSponsorsGrid({ el, size: props.size })
         rel="sponsored noopener"
       >
         <article class="vp-sponsor-grid-box">
-          <h4 class="visually-hidden">{{ sponsor.name }}</h4>
           <img
             class="vp-sponsor-grid-image"
             :src="sponsor.img"
@@ -43,6 +43,6 @@ useSponsorsGrid({ el, size: props.size })
           />
         </article>
       </a>
-    </div>
-  </div>
+    </li>
+  </ul>
 </template>

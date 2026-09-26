@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { useRoute } from 'vitepress'
-import { computed, provide, useSlots, watch } from 'vue'
+import { computed, provide, useSlots } from 'vue'
+
 import VPBackdrop from './components/VPBackdrop.vue'
 import VPContent from './components/VPContent.vue'
 import VPFooter from './components/VPFooter.vue'
@@ -9,31 +9,41 @@ import VPNav from './components/VPNav.vue'
 import VPSidebar from './components/VPSidebar.vue'
 import VPSkipLink from './components/VPSkipLink.vue'
 import { useData } from './composables/data'
-import { useCloseSidebarOnEscape, useSidebar } from './composables/sidebar'
+import { layoutInfoInjectionKey, registerWatchers } from './composables/layout'
+import { useNav } from './composables/nav'
+import { useSidebarControl } from './composables/sidebar'
 
 const {
   isOpen: isSidebarOpen,
   open: openSidebar,
   close: closeSidebar
-} = useSidebar()
+} = useSidebarControl()
 
-const route = useRoute()
-watch(() => route.path, closeSidebar)
+// everything behind the open nav screen is inert so keyboard and screen
+// reader users can't reach the covered page content
+const { isScreenOpen } = useNav()
 
-useCloseSidebarOnEscape(isSidebarOpen, closeSidebar)
+registerWatchers({ closeSidebar })
 
-const { frontmatter } = useData()
+const { frontmatter, theme } = useData()
 
 const slots = useSlots()
 const heroImageSlotExists = computed(() => !!slots['home-hero-image'])
 
-provide('hero-image-slot-exists', heroImageSlotExists)
+provide(layoutInfoInjectionKey, { heroImageSlotExists })
 </script>
 
 <template>
-  <div v-if="frontmatter.layout !== false" class="Layout" :class="frontmatter.pageClass" >
+  <div
+    v-if="frontmatter.layout !== false"
+    class="Layout"
+    :class="[
+      frontmatter.pageClass,
+      theme.gradedContainers && 'vp-graded-containers'
+    ]"
+  >
     <slot name="layout-top" />
-    <VPSkipLink />
+    <VPSkipLink :inert="isScreenOpen" />
     <VPBackdrop class="backdrop" :show="isSidebarOpen" @click="closeSidebar" />
     <VPNav>
       <template #nav-bar-title-before><slot name="nav-bar-title-before" /></template>
@@ -43,14 +53,14 @@ provide('hero-image-slot-exists', heroImageSlotExists)
       <template #nav-screen-content-before><slot name="nav-screen-content-before" /></template>
       <template #nav-screen-content-after><slot name="nav-screen-content-after" /></template>
     </VPNav>
-    <VPLocalNav :open="isSidebarOpen" @open-menu="openSidebar" />
+    <VPLocalNav :open="isSidebarOpen" @open-menu="openSidebar" :inert="isScreenOpen" />
 
-    <VPSidebar :open="isSidebarOpen">
+    <VPSidebar :open="isSidebarOpen" :inert="isScreenOpen">
       <template #sidebar-nav-before><slot name="sidebar-nav-before" /></template>
       <template #sidebar-nav-after><slot name="sidebar-nav-after" /></template>
     </VPSidebar>
 
-    <VPContent>
+    <VPContent :inert="isScreenOpen">
       <template #page-top><slot name="page-top" /></template>
       <template #page-bottom><slot name="page-bottom" /></template>
 
@@ -60,6 +70,7 @@ provide('hero-image-slot-exists', heroImageSlotExists)
       <template #home-hero-info><slot name="home-hero-info" /></template>
       <template #home-hero-info-after><slot name="home-hero-info-after" /></template>
       <template #home-hero-actions-after><slot name="home-hero-actions-after" /></template>
+      <template #home-hero-actions-before-actions><slot name="home-hero-actions-before-actions" /></template>
       <template #home-hero-image><slot name="home-hero-image" /></template>
       <template #home-hero-after><slot name="home-hero-after" /></template>
       <template #home-features-before><slot name="home-features-before" /></template>
@@ -79,7 +90,7 @@ provide('hero-image-slot-exists', heroImageSlotExists)
       <template #aside-ads-after><slot name="aside-ads-after" /></template>
     </VPContent>
 
-    <VPFooter />
+    <VPFooter :inert="isScreenOpen" />
     <slot name="layout-bottom" />
   </div>
   <Content v-else />

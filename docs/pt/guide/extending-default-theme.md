@@ -1,5 +1,6 @@
 ---
 outline: deep
+description: Personalize e estenda o tema padrão do VitePress com CSS, componentes, layouts e slots customizados.
 ---
 
 # Estendendo o Tema Padrão {#extending-the-default-theme}
@@ -22,8 +23,7 @@ Antes de prosseguir, certifique-se de ler primeiro [Usando um Tema Personalizado
 
 O CSS do tema padrão pode ser personalizado substituindo as variáveis CSS no nível raiz:
 
-```js
-// .vitepress/theme/index.js
+```js [.vitepress/theme/index.js]
 import DefaultTheme from 'vitepress/theme'
 import './custom.css'
 
@@ -46,8 +46,7 @@ VitePress usa [Inter](https://rsms.me/inter/) como fonte padrão e incluirá as 
 
 Para evitar a inclusão de Inter na saída de compilação, importe o tema de `vitepress/theme-without-fonts`:
 
-```js
-// .vitepress/theme/index.js
+```js [.vitepress/theme/index.js]
 import DefaultTheme from 'vitepress/theme-without-fonts'
 import './my-fonts.css'
 
@@ -55,7 +54,7 @@ export default DefaultTheme
 ```
 
 ```css
-/* .vitepress/theme/custom.css */
+/* .vitepress/theme/my-fonts.css */
 :root {
   --vp-font-family-base: /* fonte de texto normal */
   --vp-font-family-mono: /* fonte de código */
@@ -68,12 +67,11 @@ Se estiver usando componentes opcionais como os componentes da [Página da Equip
 
 Se a sua fonte é um arquivo local referenciado via `@font-face`, ela será processada como um ativo e incluída em `.vitepress/dist/assets` com um nome de arquivo hash. Para pré-carregar esse arquivo, use o gancho de construção [transformHead](../reference/site-config#transformhead):
 
-```js
-// .vitepress/config.js
+```js [.vitepress/config.js]
 export default {
   transformHead({ assets }) {
     // ajuste o regex para corresponder à sua fonte
-    const myFontFile = assets.find(file => /font-name\.\w+\.woff2/)
+    const myFontFile = assets.find(file => /font-name\.[\w-]+\.woff2/.test(file))
     if (myFontFile) {
       return [
         [
@@ -94,8 +92,7 @@ export default {
 
 ## Registrando Componentes Globais {#registering-global-components}
 
-```js
-// .vitepress/theme/index.js
+```js [.vitepress/theme/index.js]
 import DefaultTheme from 'vitepress/theme'
 
 /** @type {import('vitepress').Theme} */
@@ -109,8 +106,7 @@ export default {
 ```
 
 Se estiver usando TypeScript:
-```ts
-// .vitepress/theme/index.ts
+```ts [.vitepress/theme/index.ts]
 import type { Theme } from 'vitepress'
 import DefaultTheme from 'vitepress/theme'
 
@@ -123,14 +119,13 @@ export default {
 } satisfies Theme
 ```
 
-Como estamos usando Vite, você também pode aproveitar a [funcionalidade de importação glob](https://vitejs.dev/guide/features.html#glob-import) do Vite para registrar automaticamente um diretório de componentes.
+Como estamos usando Vite, você também pode aproveitar a [funcionalidade de importação glob](https://vite.dev/guide/features.html#glob-import) do Vite para registrar automaticamente um diretório de componentes.
 
 ## _Slots_ no Layout {#layout-slots}
 
 O componente `<Layout/>` do tema padrão possui alguns _slots_ que podem ser usados para injetar conteúdo em locais específicos da página. Aqui está um exemplo de como injetar um componente antes do esquema :
 
-```js
-// .vitepress/theme/index.js
+```js [.vitepress/theme/index.js]
 import DefaultTheme from 'vitepress/theme'
 import MyLayout from './MyLayout.vue'
 
@@ -142,8 +137,7 @@ export default {
 }
 ```
 
-```vue
-<!--.vitepress/theme/MyLayout.vue-->
+```vue [.vitepress/theme/MyLayout.vue]
 <script setup>
 import DefaultTheme from 'vitepress/theme'
 
@@ -161,8 +155,7 @@ const { Layout } = DefaultTheme
 
 Ou você também pode usar a função _render_.
 
-```js
-// .vitepress/theme/index.js
+```js [.vitepress/theme/index.js]
 import { h } from 'vue'
 import DefaultTheme from 'vitepress/theme'
 import MyComponent from './MyComponent.vue'
@@ -197,6 +190,8 @@ Lista completa de _slots_ disponíveis no layout do tema padrão:
   - `home-hero-before`
   - `home-hero-info-before`
   - `home-hero-info`
+  - `home-hero-info-after`
+  - `home-hero-actions-before-actions`
   - `home-hero-actions-after`
   - `home-hero-image`
   - `home-hero-after`
@@ -223,80 +218,7 @@ Lista completa de _slots_ disponíveis no layout do tema padrão:
 
 Você pode estender o tema padrão para fornecer uma transição personalizada quando o modo de cor é alternado. Um exemplo:
 
-```vue
-<!-- .vitepress/theme/Layout.vue -->
-
-<script setup lang="ts">
-import { useData } from 'vitepress'
-import DefaultTheme from 'vitepress/theme'
-import { nextTick, provide } from 'vue'
-
-const { isDark } = useData()
-
-const enableTransitions = () =>
-  'startViewTransition' in document &&
-  window.matchMedia('(prefers-reduced-motion: no-preference)').matches
-
-provide('toggle-appearance', async ({ clientX: x, clientY: y }: MouseEvent) => {
-  if (!enableTransitions()) {
-    isDark.value = !isDark.value
-    return
-  }
-
-  const clipPath = [
-    `circle(0px at ${x}px ${y}px)`,
-    `circle(${Math.hypot(
-      Math.max(x, innerWidth - x),
-      Math.max(y, innerHeight - y)
-    )}px at ${x}px ${y}px)`
-  ]
-
-  await document.startViewTransition(async () => {
-    isDark.value = !isDark.value
-    await nextTick()
-  }).ready
-
-  document.documentElement.animate(
-    { clipPath: isDark.value ? clipPath.reverse() : clipPath },
-    {
-      duration: 300,
-      easing: 'ease-in',
-      pseudoElement: `::view-transition-${isDark.value ? 'old' : 'new'}(root)`
-    }
-  )
-})
-</script>
-
-<template>
-  <DefaultTheme.Layout />
-</template>
-
-<style>
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
-}
-
-::view-transition-old(root),
-.dark::view-transition-new(root) {
-  z-index: 1;
-}
-
-::view-transition-new(root),
-.dark::view-transition-old(root) {
-  z-index: 9999;
-}
-
-.VPSwitchAppearance {
-  width: 22px !important;
-}
-
-.VPSwitchAppearance .check {
-  transform: none !important;
-}
-</style>
-```
+<<< @/components/AppearanceToggleTransition.vue [.vitepress/theme/Layout.vue]
 
 Resultado (**atenção!**: cores piscantes, movimentos súbitos, luzes brilhantes):
 
@@ -315,7 +237,7 @@ Em breve.
 
 ## Substituindo Componentes Internos {#overriding-internal-components}
 
-Você pode usar os [aliases](https://vitejs.dev/config/shared-options.html#resolve-alias) Vite para substituir os componentes do tema padrão pelos seus personalizados:
+Você pode usar os [aliases](https://vite.dev/config/shared-options.html#resolve-alias) Vite para substituir os componentes do tema padrão pelos seus personalizados:
 
 ```ts
 import { fileURLToPath, URL } from 'node:url'

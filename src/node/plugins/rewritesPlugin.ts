@@ -1,27 +1,42 @@
-import type { Plugin } from 'vite'
 import { compile, match } from 'path-to-regexp'
+import type { Plugin } from 'vite'
+
+import { isRelativeBase } from '../shared'
 import type { SiteConfig, UserConfig } from '../siteConfig'
 
 export function resolveRewrites(
   pages: string[],
   userRewrites: UserConfig['rewrites']
 ) {
-  const rewriteRules = Object.entries(userRewrites || {}).map(([from, to]) => ({
-    toPath: compile(`/${to}`, { validate: false }),
-    matchUrl: match(from.startsWith('^') ? new RegExp(from) : from)
-  }))
-
   const pageToRewrite: Record<string, string> = {}
   const rewriteToPage: Record<string, string> = {}
-  if (rewriteRules.length) {
+
+  if (typeof userRewrites === 'function') {
     for (const page of pages) {
-      for (const { matchUrl, toPath } of rewriteRules) {
-        const res = matchUrl(page)
-        if (res) {
-          const dest = toPath(res.params).slice(1)
-          pageToRewrite[page] = dest
-          rewriteToPage[dest] = page
-          break
+      const dest = userRewrites(page)
+      if (dest && dest !== page) {
+        pageToRewrite[page] = dest
+        rewriteToPage[dest] = page
+      }
+    }
+  } else if (typeof userRewrites === 'object') {
+    const rewriteRules = Object.entries(userRewrites || {}).map(
+      ([from, to]) => ({
+        toPath: compile(`/${to}`, { validate: false }),
+        matchUrl: match(from.startsWith('^') ? new RegExp(from) : from)
+      })
+    )
+
+    if (rewriteRules.length) {
+      for (const page of pages) {
+        for (const { matchUrl, toPath } of rewriteRules) {
+          const res = matchUrl(page)
+          if (res) {
+            const dest = toPath(res.params).slice(1)
+            pageToRewrite[page] = dest
+            rewriteToPage[dest] = page
+            break
+          }
         }
       }
     }
@@ -37,17 +52,19 @@ export const rewritesPlugin = (config: SiteConfig): Plugin => {
   return {
     name: 'vitepress:rewrites',
     configureServer(server) {
+      // dev always serves at the root when the base is relative
+      const base = isRelativeBase(config.site.base) ? '/' : config.site.base
       // dev rewrite
       server.middlewares.use((req, _res, next) => {
         if (req.url) {
           const page = decodeURI(req.url)
             .replace(/[?#].*$/, '')
-            .slice(config.site.base.length)
+            .slice(base.length)
 
           if (config.rewrites.inv[page]) {
             req.url = req.url.replace(
               encodeURI(page),
-              encodeURI(config.rewrites.inv[page]!)
+              encodeURI(config.rewrites.inv[page])
             )
           }
         }

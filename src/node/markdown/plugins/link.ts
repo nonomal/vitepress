@@ -2,22 +2,42 @@
 // 1. adding target="_blank" to external links
 // 2. normalize internal links to end with `.html`
 
-import type MarkdownIt from 'markdown-it'
-import { URL } from 'url'
+import { URL } from 'node:url'
+
+import type { MarkdownItAsync } from 'markdown-it-async'
+
 import {
   EXTERNAL_URL_RE,
   isExternal,
+  isRelativeBase,
+  joinPath,
+  relativePathToRoot,
   treatAsHtml,
   type MarkdownEnv
 } from '../../shared'
 
-const indexRE = /(^|.*\/)index.md(#?.*)$/i
+const indexRE = /(^|.*\/)index\.md$/i
 
 export const linkPlugin = (
-  md: MarkdownIt,
+  md: MarkdownItAsync,
   externalAttrs: Record<string, string>,
-  base: string
+  base: string,
+  slugify: (str: string) => string
 ) => {
+  md.core.ruler.after('inline', 'vitepress_link_lines', (state) => {
+    for (const token of state.tokens) {
+      if (token.type !== 'inline' || !token.children || !token.map) continue
+
+      const line = token.map[0] + 1
+      for (const child of token.children) {
+        if (child.type === 'link_open') {
+          child.meta ??= {}
+          child.meta.vpLine = line
+        }
+      }
+    }
+  })
+
   md.renderer.rules.link_open = (
     tokens,
     idx,
@@ -27,16 +47,20 @@ export const linkPlugin = (
   ) => {
     const token = tokens[idx]
     const hrefIndex = token.attrIndex('href')
-    if (hrefIndex >= 0) {
+    if (
+      hrefIndex >= 0 &&
+      token.attrGet('class') !== 'header-anchor' // header anchors are already normalized
+    ) {
       const hrefAttr = token.attrs![hrefIndex]
-      const url = hrefAttr[1]
+      let [url, frag] = hrefAttr[1].split(':~:', 2)
+      hrefAttr[1] = url
       if (isExternal(url)) {
         Object.entries(externalAttrs).forEach(([key, val]) => {
-          token.attrSet(key, val)
+          if (token.attrIndex(key) < 0) token.attrSet(key, val)
         })
         // catch localhost links as dead link
         if (url.replace(EXTERNAL_URL_RE, '').startsWith('//localhost:')) {
-          pushLink(url, env)
+          pushLink(url, env, token.meta?.vpLine)
         }
         hrefAttr[1] = url
       } else {
@@ -47,32 +71,52 @@ export const linkPlugin = (
           !url.startsWith('#') &&
           // skip mail/custom protocol links
           protocol.startsWith('http') &&
+          // skip links with target/download attribute as they are meant to be opened/downloaded as-is
+          token.attrIndex('target') < 0 &&
+          token.attrIndex('download') < 0 &&
           // skip links to files (other than html/md)
           treatAsHtml(pathname)
         ) {
-          normalizeHref(hrefAttr, env)
+          normalizeHref(hrefAttr, env, token.meta?.vpLine)
         } else if (url.startsWith('#')) {
-          hrefAttr[1] = decodeURI(hrefAttr[1])
+          hrefAttr[1] = decodeURI(normalizeHash(hrefAttr[1]))
         }
 
         // append base to internal (non-relative) urls
         if (hrefAttr[1].startsWith('/')) {
-          hrefAttr[1] = `${base}${hrefAttr[1]}`.replace(/\/+/g, '/')
+          if (isRelativeBase(base)) {
+            // page-relative, so the same html works at any mount point
+            if (env.relativizeUrls && env.relativePath != null) {
+              hrefAttr[1] =
+                relativePathToRoot(env.relativePath) + hrefAttr[1].slice(1)
+            }
+          } else {
+            hrefAttr[1] = joinPath(base, hrefAttr[1])
+          }
         }
+      }
+      if (frag) {
+        hrefAttr[1] += (hrefAttr[1].includes('#') ? '' : '#') + ':~:' + frag
       }
     }
     return self.renderToken(tokens, idx, options)
   }
 
-  function normalizeHref(hrefAttr: [string, string], env: MarkdownEnv) {
+  function normalizeHref(
+    hrefAttr: [string, string],
+    env: MarkdownEnv,
+    line?: number
+  ) {
     let url = hrefAttr[1]
 
-    const indexMatch = url.match(indexRE)
+    // directory urls need a server to resolve them, and file:// has none
+    const explicitIndex = isRelativeBase(base) && !env.cleanUrls
+
+    let cleanUrl = url.replace(/[?#].*$/, '')
+    const indexMatch = cleanUrl.match(indexRE)
     if (indexMatch) {
-      const [, path, hash] = indexMatch
-      url = path + hash
+      cleanUrl = indexMatch[1] + (explicitIndex ? 'index.html' : '')
     } else {
-      let cleanUrl = url.replace(/[?#].*$/, '')
       // transform foo.md -> foo[.html]
       if (cleanUrl.endsWith('.md')) {
         cleanUrl = cleanUrl.replace(/\.md$/, env.cleanUrls ? '' : '.html')
@@ -85,24 +129,35 @@ export const linkPlugin = (
       ) {
         cleanUrl += '.html'
       }
-      const parsed = new URL(url, 'http://a.com')
-      url = cleanUrl + parsed.search + parsed.hash
+      if (explicitIndex && cleanUrl.endsWith('/')) {
+        cleanUrl += 'index.html'
+      }
     }
+    const parsed = new URL(url, 'http://a.com')
+    url = cleanUrl + parsed.search + normalizeHash(parsed.hash)
 
     // ensure leading . for relative paths
-    if (!url.startsWith('/') && !/^\.\//.test(url)) {
+    if (!url.startsWith('/') && !url.startsWith('./')) {
       url = './' + url
     }
 
     // export it for existence check
-    pushLink(url.replace(/\.html$/, ''), env)
+    pushLink(url.replace(/\.html$/, ''), env, line)
 
     // markdown-it encodes the uri
     hrefAttr[1] = decodeURI(url)
   }
 
-  function pushLink(link: string, env: MarkdownEnv) {
+  function normalizeHash(str: string) {
+    return str ? encodeURI('#' + slugify(decodeURI(str).slice(1))) : ''
+  }
+
+  function pushLink(link: string, env: MarkdownEnv, line?: number) {
     const links = env.links || (env.links = [])
     links.push(link)
+    if (line != null) {
+      const linkLines = env.linkLines || (env.linkLines = [])
+      linkLines[links.length - 1] = line
+    }
   }
 }

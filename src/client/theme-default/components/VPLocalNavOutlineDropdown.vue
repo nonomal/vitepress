@@ -1,24 +1,42 @@
 <script setup lang="ts">
-import { onClickOutside, onKeyStroke } from '@vueuse/core'
+import { onKeyStroke } from '@vueuse/core'
 import { onContentUpdated } from 'vitepress'
-import { nextTick, ref } from 'vue'
+import type { DefaultTheme } from 'vitepress/theme'
+import { nextTick, ref, useId, useTemplateRef, watch } from 'vue'
+
 import { useData } from '../composables/data'
-import { resolveTitle, type MenuItem } from '../composables/outline'
+import { resolveTitle } from '../composables/outline'
+import { useBodyScrollLock } from '../composables/scroll-lock'
 import VPDocOutlineItem from './VPDocOutlineItem.vue'
 
 const props = defineProps<{
-  headers: MenuItem[]
+  headers: DefaultTheme.OutlineItem[]
   navHeight: number
 }>()
 
 const { theme } = useData()
 const open = ref(false)
 const vh = ref(0)
-const main = ref<HTMLDivElement>()
-const items = ref<HTMLDivElement>()
+const main = useTemplateRef('main')
+const items = useTemplateRef('items')
+const itemsId = useId()
 
-onClickOutside(main, () => {
-  open.value = false
+// lock body scroll while the dropdown is open to prevent scroll chaining
+const isLocked = useBodyScrollLock()
+
+function closeOnClickOutside(e: Event) {
+  if (!main.value?.contains(e.target as Node)) {
+    open.value = false
+  }
+}
+
+watch(open, (value) => {
+  isLocked.value = value
+  if (value) {
+    document.addEventListener('click', closeOnClickOutside)
+    return
+  }
+  document.removeEventListener('click', closeOnClickOutside)
 })
 
 onKeyStroke('Escape', () => {
@@ -54,26 +72,34 @@ function scrollToTop() {
 
 <template>
   <div
+    ref="main"
     class="VPLocalNavOutlineDropdown"
     :style="{ '--vp-vh': vh + 'px' }"
-    ref="main"
+    data-allow-mismatch="style"
   >
-    <button @click="toggle" :class="{ open }" v-if="headers.length > 0">
+    <button
+      v-if="headers.length > 0"
+      type="button"
+      :aria-expanded="open"
+      :aria-controls="itemsId"
+      :class="{ open }"
+      @click="toggle"
+    >
       <span class="menu-text">{{ resolveTitle(theme) }}</span>
-      <span class="vpi-chevron-right icon" />
+      <span class="vpi-chevron-right icon" aria-hidden="true" />
     </button>
-    <button @click="scrollToTop" v-else>
+    <button v-else type="button" @click="scrollToTop">
       {{ theme.returnToTopLabel || 'Return to top' }}
     </button>
     <Transition name="flyout">
-      <div v-if="open" ref="items" class="items" @click="onItemClick">
+      <div v-if="open" ref="items" :id="itemsId" class="items" @click="onItemClick">
         <div class="header">
           <a class="top-link" href="#" @click="scrollToTop">
             {{ theme.returnToTopLabel || 'Return to top' }}
           </a>
         </div>
         <div class="outline">
-          <VPDocOutlineItem :headers="headers" />
+          <VPDocOutlineItem :headers />
         </div>
       </div>
     </Transition>
@@ -81,21 +107,11 @@ function scrollToTop() {
 </template>
 
 <style scoped>
-.VPLocalNavOutlineDropdown {
-  padding: 12px 20px 11px;
-}
-
-@media (min-width: 960px) {
-  .VPLocalNavOutlineDropdown {
-    padding: 12px 36px 11px;
-  }
-}
-
 .VPLocalNavOutlineDropdown button {
   display: block;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
-  line-height: 24px;
+  line-height: 2;
   color: var(--vp-c-text-2);
   transition: color 0.5s;
   position: relative;
@@ -113,19 +129,19 @@ function scrollToTop() {
 .icon {
   display: inline-block;
   vertical-align: middle;
-  margin-left: 2px;
-  font-size: 14px;
-  transform: rotate(0deg);
+  margin-inline-start: 0.125rem;
+  font-size: 0.875rem;
+  transform: rotate(0);
   transition: transform 0.25s;
 }
 
-@media (min-width: 960px) {
+@media (min-width: 60rem) {
   .VPLocalNavOutlineDropdown button {
-    font-size: 14px;
+    font-size: 0.875rem;
   }
 
   .icon {
-    font-size: 16px;
+    font-size: 1rem;
   }
 }
 
@@ -135,24 +151,23 @@ function scrollToTop() {
 
 .items {
   position: absolute;
-  top: 40px;
-  right: 16px;
-  left: 16px;
+  top: 2.5rem;
+  inset-inline: 1rem;
   display: grid;
   gap: 1px;
   border: 1px solid var(--vp-c-border);
-  border-radius: 8px;
+  border-radius: 0.5rem;
   background-color: var(--vp-c-gutter);
-  max-height: calc(var(--vp-vh, 100vh) - 86px);
+  max-height: calc(var(--vp-vh, 100vh) - 5.375rem);
   overflow: hidden auto;
+  overscroll-behavior: contain;
   box-shadow: var(--vp-shadow-3);
 }
 
-@media (min-width: 960px) {
+@media (min-width: 60rem) {
   .items {
-    right: auto;
-    left: calc(var(--vp-sidebar-width) + 32px);
-    width: 320px;
+    inset-inline: calc(var(--vp-sidebar-width) + 2rem) auto;
+    width: 20rem;
   }
 }
 
@@ -162,15 +177,15 @@ function scrollToTop() {
 
 .top-link {
   display: block;
-  padding: 0 16px;
-  line-height: 48px;
-  font-size: 14px;
+  padding: 0 1rem;
+  line-height: 3.4285714;
+  font-size: 0.875rem;
   font-weight: 500;
   color: var(--vp-c-brand-1);
 }
 
 .outline {
-  padding: 8px 0;
+  padding: 0.5rem 0;
   background-color: var(--vp-c-bg-soft);
 }
 
@@ -185,6 +200,6 @@ function scrollToTop() {
 .flyout-enter-from,
 .flyout-leave-to {
   opacity: 0;
-  transform: translateY(-16px);
+  transform: translateY(-1rem);
 }
 </style>

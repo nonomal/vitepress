@@ -1,8 +1,9 @@
+import type { Server } from 'node:net'
+
 import getPort from 'get-port'
 import { chromium, type BrowserServer } from 'playwright-chromium'
-import { build, createServer, serve } from 'vitepress'
 import type { ViteDevServer } from 'vite'
-import type { Server } from 'net'
+import { build, createServer, serve } from 'vitepress'
 
 let browserServer: BrowserServer
 let server: ViteDevServer | Server

@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { normalizeLink } from '../support/utils'
+
 import { EXTERNAL_URL_RE } from '../../shared'
+import { normalizeLink } from '../support/utils'
 
 interface Props {
   tag?: string
   size?: 'medium' | 'big'
   theme?: 'brand' | 'alt' | 'sponsor'
-  text: string
+  text?: string
   href?: string
-  target?: string;
-  rel?: string;
+  target?: string
+  rel?: string
 }
 const props = withDefaults(defineProps<Props>(), {
   size: 'medium',
@@ -22,30 +23,33 @@ const isExternal = computed(
 )
 
 const component = computed(() => {
-  return props.tag || props.href ? 'a' : 'button'
+  return props.tag || (props.href ? 'a' : 'button')
 })
 </script>
 
 <template>
   <component
     :is="component"
-    class="VPButton"
+    class="VPButton no-icon"
     :class="[size, theme]"
     :href="href ? normalizeLink(href) : undefined"
     :target="props.target ?? (isExternal ? '_blank' : undefined)"
     :rel="props.rel ?? (isExternal ? 'noreferrer' : undefined)"
   >
-    {{ text }}
+    <slot>{{ text }}</slot>
   </component>
 </template>
 
 <style scoped>
 .VPButton {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid transparent;
   text-align: center;
   font-weight: 600;
   white-space: nowrap;
+  text-decoration: none;
   transition: color 0.25s, border-color 0.25s, background-color 0.25s;
 }
 
@@ -54,17 +58,17 @@ const component = computed(() => {
 }
 
 .VPButton.medium {
-  border-radius: 20px;
-  padding: 0 20px;
-  line-height: 38px;
-  font-size: 14px;
+  height: 2.5rem;
+  border-radius: 1.25rem;
+  padding: 0 1.25rem;
+  font-size: 0.875rem;
 }
 
 .VPButton.big {
-  border-radius: 24px;
-  padding: 0 24px;
-  line-height: 46px;
-  font-size: 16px;
+  height: 3rem;
+  border-radius: 1.5rem;
+  padding: 0 1.5rem;
+  font-size: 1rem;
 }
 
 .VPButton.brand {

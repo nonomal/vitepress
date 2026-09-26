@@ -1,4 +1,5 @@
 ---
+description: Убедитесь, что компоненты вашей темы VitePress и пользовательский код совместимы с серверным рендерингом.
 outline: deep
 ---
 
@@ -36,9 +37,9 @@ onMounted(() => {
 </script>
 ```
 
-### Условный импорт {#conditional-import}
+### Импорт по условию {#conditional-import}
 
-Вы также можете условно импортировать зависимость с помощью флага `import.meta.env.SSR` (часть [env-переменных Vite](https://vitejs.dev/guide/env-and-mode.html#env-variables)):
+Вы также можете условно импортировать зависимость с помощью флага `import.meta.env.SSR` (часть [переменных окружения Vite](https://vite-docs.ru/guide/env-and-mode.html#env-variables)):
 
 ```js
 if (!import.meta.env.SSR) {
@@ -50,8 +51,7 @@ if (!import.meta.env.SSR) {
 
 Поскольку [`Theme.enhanceApp`](./custom-theme#theme-interface) может быть асинхронным, вы можете условно импортировать и регистрировать плагины Vue, которые получают доступ к API браузера при импорте:
 
-```js
-// .vitepress/theme/index.js
+```js [.vitepress/theme/index.js]
 /** @type {import('vitepress').Theme} */
 export default {
   // ...
@@ -66,8 +66,7 @@ export default {
 
 Если вы используете TypeScript:
 
-```ts
-// .vitepress/theme/index.ts
+```ts [.vitepress/theme/index.ts]
 import type { Theme } from 'vitepress'
 
 export default {
